@@ -1,9 +1,10 @@
-library(TCGAbiolinks)
 library(isma)
 library(mND)
 library(limma)
 library(igraph)
 library(pcaPP)
+library(SciViews)
+library(tidyverse)
 #library(rsample)
 setwd("Desktop/LAU/Spring 2022/BIF 498HG (CSC 613)/Assignments/Final Project/Implementation")
 source("GeneSurrounder.R")
@@ -52,32 +53,27 @@ for(i in 1:1000){
 }
 
 ## Gene Surrounder
+gs_results <- data.frame()
+for(i in 1:nrow(A)){
 gs <- geneNIDG(distance.matrix = ge_dist, cor.matrix = ge_cor, geneStats.observed = ge,
                perm.geneStats.matrix = as.matrix(ge_resampled), genes.assayedETnetwork = genes.assayedETnetwork, diameter = diam,
-               num.Sphere.resamples = 1000, gene.id = rownames(A)
+               num.Sphere.resamples = 1000, gene.id = rownames(A)[i]
                )
-
-### Troubleshooting
-distances <- ge_dist[rownames(A),genes.assayedETnetwork]
-
-for(i in 1:diam){
-  igenes.distances <- distances[distances <= i & distances > 0]
-  igenes.names <- names(igenes.distances)
-  print(length(abs(ge[igenes.names])))
-  print(length(igenes.distances))
-  return(
-    
-    cor.fk(abs(ge[igenes.names]), igenes.distances)
-    
-  )
+gs <- gs %>% mutate(p.Fisher = -2*(ln(p.Sphere) + ln(p.Decay)))
+gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
 }
 
-idx <- which(distances <= 3 & distances > 0, arr.ind = TRUE)
-distances[idx]
 
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
 # Check GeneSurrounder.R line 325
 # Error thrown: Error in cor.fk(abs(ge[igenes.names]), igenes.distances) : 
 #                       x and y must have same length.
-        
+#### UPDATE
+# GS only runs on 1 gene at a time, only outputs p.Sphere and p.Decay not p.Fisher
+# Created for loop to run gs on each gene, calculate p.Fisher, and keep results for min(p.Fisher) only
+# -2(ln(p.Sphere) + ln(p.Decay)) does not give a p-value. It gives X2 distribution with 4 degrees of freedom
+# How to convert to p-value?
+
+
+
