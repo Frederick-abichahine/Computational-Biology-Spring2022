@@ -323,12 +323,17 @@ Observed.DecayDE <- function(distance.matrix,
 
 
 	observed.tau_b <- vapply(1:diameter,function(RADIUS){
-
-
+	  #Ghadi (1 line)
+	  idx <- which(distances <= RADIUS & distances > 0, arr.ind = TRUE)
+    
 		# Excludes gene j with distances > 0 
-		igenes.distances <- distances[distances <= RADIUS
-									 & distances > 0]
-		igenes.names <- names(igenes.distances)
+		#igenes.distances <- distances[distances <= RADIUS
+		#							 & distances > 0]
+	  #igenes.names <- names(igenes.distances)
+	  
+	  #Ghadi (2 lines)
+	  igenes.distances <- distances[idx]
+		igenes.names <- unique(rownames(idx))
 
 
 		return(
