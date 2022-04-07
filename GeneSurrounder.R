@@ -373,12 +373,12 @@ Resample.DecayDE <- function(distance.matrix,
 
 
     num.genes <- length(genes.assayedETnetwork) - 1
-    geneid.d <- which(sizes == num.genes)[1]
+    geneid.d <- which(sizes == num.genes)[1] #This outputs NA when diameter < 8, sizes gives number close to gene numbers but not quite, which() cannot find it
 
 
     # null.tau b matrix of 1000 row 34 columns b/c stacks columns
     null.tau_b <- vapply(1:geneid.d,function(RADIUS){
-
+    #null.tau_b <- vapply(1:diameter,function(RADIUS){ #Ghadi
 
         # Excludes gene j with distances > 0
         igenes.distances <- distances[distances <= RADIUS
@@ -559,16 +559,16 @@ geneNIDG <- function(distance.matrix,
 
     # ?adply
     # The most unambiguous behaviour is achieved when .fun returns a data frame
-
+    
     return(data.frame(gene.id = rep(gene.id,diameter),
                       radius = 1:diameter,
                       size = sizes,
                       observed.tau_b = observed.tau_b,
                       p.Decay = p.Decay,
                       observed.cor = observed.cor,
-                      p.Sphere = p.Sphere)
-
-        )
+                      p.Sphere = p.Sphere,
+                      p.Fisher = pchisq(-2*(ln(p.Sphere) + ln(p.Decay)), df = 4, lower.tail = FALSE)
+        ))
 
 
 }
