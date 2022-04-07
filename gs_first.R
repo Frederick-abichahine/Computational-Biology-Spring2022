@@ -34,36 +34,228 @@ mND_score <- signif_assess(mND_score)
 ## Preprocessing
 ge <- X0[,2]
 plot(sort(ge))
+ggplot(data.frame(ge = ge), aes(ge)) + geom_density()
+ge_filtered <- ge[ge >= 10] # gives 438 genes, roughly 2 hours to run GeneSurrounder
+
 int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
 ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkName = "int_network")
-ge_cor <- calcCorMatrix(ge, corMethod = "pearson", exprName = "ge", useMethod = "everything")
+
+ge_cor <- calcCorMatrix(data.frame(ge_filtered), corMethod = "pearson", exprName = "ge_filtered", useMethod = "everything")
+
 diam <- diameter(int_network)
-genes.assayedETnetwork <- intersect(
-  rownames(ge_dist),
-  rownames(ge_cor))
+
+genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(ge_cor))
 
 ## Resampling
 #ge_boot <- bootstraps(as.vector(ge), times = 1000)
 
-ge_resampled <- data.frame(matrix(ncol = nrow(A), nrow = 1000))
-colnames(ge_resampled) <- rownames(A)
+ge_resampled <- data.frame(matrix(ncol = length(ge_filtered), nrow = 1000))
+colnames(ge_resampled) <- rownames(data.frame(ge_filtered))
 
 for(i in 1:1000){
-  ge_resampled[i,] <- sample(ge, length(ge), replace = TRUE)
+  ge_resampled[i,] <- sample(ge_filtered, length(ge_filtered), replace = TRUE)
 }
 
-## Gene Surrounder
+## GeneSurrounder
 gs_results <- data.frame()
-for(i in 1:nrow(A)){
-gs <- geneNIDG(distance.matrix = ge_dist, cor.matrix = ge_cor, geneStats.observed = ge,
-               perm.geneStats.matrix = as.matrix(ge_resampled), genes.assayedETnetwork = genes.assayedETnetwork, diameter = diam,
-               num.Sphere.resamples = 1000, gene.id = rownames(A)[i]
+time <- vector()
+
+for(i in 1:length(ge_filtered)){
+  start_time <- Sys.time()
+  print(paste("Run", i))
+  
+  gs <- geneNIDG(distance.matrix = ge_dist, 
+               cor.matrix = ge_cor, 
+               geneStats.observed = ge_filtered,
+               perm.geneStats.matrix = as.matrix(ge_resampled), 
+               genes.assayedETnetwork = genes.assayedETnetwork, 
+               diameter = diam, # diameter >= 8 # diameter < 8 gives an error due to geneid.d line 376 of GeneSurrounder.R
+               num.Sphere.resamples = 1000, 
+               gene.id = rownames(data.frame(ge_filtered))[i] 
                )
-gs <- gs %>% mutate(p.Fisher = -2*(ln(p.Sphere) + ln(p.Decay)))
-gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
+  
+  print(gs[which.min(gs$p.Fisher),])
+  gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
+  end_time <- Sys.time()
+  time[i] <- end_time - start_time
+  print(paste("Time:", time[i], ""))
+}
+gs_results <- gs_results %>% mutate(time = time)
+write.csv(gs_results, "gs_result_1.csv")
+
+ggplot(gs_results, aes(p.Sphere)) +
+  geom_density()
+ggplot(gs_results, aes(p.Fisher)) +
+  geom_density()
+ggplot(gs_results, aes(time)) +
+  geom_density()
+
+## mND on GeneSurrounder
+X0_new <- data.frame(X0) %>%
+  mutate(sum = L1 + L2) %>%
+  filter(sum > 0) %>%
+  select(-sum)
+
+ge_new <- X0_new %>% filter(L2 > 0) %>% select(L2)
+ge_cor_new <- calcCorMatrix(setNames(ge_new$L2, rownames(ge_new)), corMethod = "pearson", exprName = "ge_new", useMethod = "everything")
+
+run_geneSurrounder <- function(distance.matrix, 
+                               cor.matrix, 
+                               geneStats.observed, 
+                               perm.geneStats.matrix,
+                               diameter,
+                               num.Sphere.resamples = 1,
+                               gene.id,
+                               decay_only = TRUE){
+  genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(cor.matrix))
+  gs_results <- data.frame()
+  time <- vector()
+  if(!decay_only){
+  for(i in 1:length(gene.id)){
+    start_time <- Sys.time()
+    print(paste("Run", i))
+    
+    gs <- geneNIDG(distance.matrix = distance.matrix, 
+                   cor.matrix = cor.matrix, 
+                   geneStats.observed = geneStats.observed,
+                   perm.geneStats.matrix = perm.geneStats.matrix, 
+                   genes.assayedETnetwork = genes.assayedETnetwork, 
+                   diameter = diam, # diameter >= 8 # diameter < 8 gives an error due to geneid.d line 376 of GeneSurrounder.R
+                   num.Sphere.resamples = num.Sphere.resamples, 
+                   gene.id = gene.id[i] 
+    )
+    
+    print(gs[which.min(gs$p.Fisher),])
+    gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
+    end_time <- Sys.time()
+    time[i] <- end_time - start_time
+    print(paste("Time:", time[i], ""))
+  }
+  gs_results <- gs_results %>% mutate(time = time)
+  write.csv(gs_results, "gs_result_1.csv")
+  gs_results
+  }else{
+    for(i in 1:length(gene.id)){
+      start_time <- Sys.time()
+      print(paste("Run", i))
+      distances <- distance.matrix[gene.id[i],
+                                   genes.assayedETnetwork]
+      
+      
+      sizes <- vapply(1:diameter,function(RADIUS){
+        
+        igenes.distances <- distances[distances <= RADIUS
+                                      & distances > 0]
+        
+        length(igenes.distances)
+        
+        
+      },
+      numeric(1))
+      observed.tau_b <- Observed.DecayDE(distance.matrix,
+                                         gene.id[i],
+                                         genes.assayedETnetwork,
+                                         diameter,
+                                         geneStats.observed)
+      
+      
+      null.tau_b <- Resample.DecayDE(distance.matrix,
+                                     gene.id[i],
+                                     genes.assayedETnetwork,
+                                     diameter,
+                                     perm.geneStats.matrix,
+                                     sizes)
+      
+      
+      num.Decay.resamples <- nrow(perm.geneStats.matrix)
+      
+      # proportion of null taub \LEQ observed i.e more discordant 
+      p.Decay <- vapply(1:diameter,function(distance){
+        
+        observed.p <- observed.tau_b[distance]
+        
+        null.p <- null.tau_b[distance,1:num.Decay.resamples]
+        
+        return(length(null.p[null.p <= observed.p])/length(null.p))
+        
+      },
+      numeric(1))
+      
+      p.Decay[p.Decay == 0] <- 1/(num.Decay.resamples+1)
+      
+      gs <- data.frame(gene.id = rep(gene.id[i],diameter),
+                 radius = 1:diameter,
+                 size = sizes,
+                 observed.tau_b = observed.tau_b,
+                 p.Decay = p.Decay)
+      
+      print(gs[which.min(gs$p.Decay),])
+      gs_results <- rbind(gs_results, gs[which.min(gs$p.Decay),])
+      end_time <- Sys.time()
+      time[i] <- end_time - start_time
+      print(paste("Time:", time[i], ""))
+    }
+    gs_results <- gs_results %>% mutate(time = time)
+    write.csv(gs_results, "gs_result_decay_only.csv")
+    gs_results
+  }
 }
 
+ge_resampled_new <- data.frame(matrix(ncol = nrow(ge_new), nrow = 1000))
+colnames(ge_resampled_new) <- rownames(ge_new)
 
+for(i in 1:1000){
+  ge_resampled_new[i,] <- sample(ge_new[,1], nrow(ge_new), replace = TRUE)
+}
+
+gs_new_results <- run_geneSurrounder(distance.matrix = ge_dist, 
+                                     cor.matrix = ge_cor_new, 
+                                     geneStats.observed = setNames(ge_new$L2, rownames(ge_new)),
+                                     perm.geneStats.matrix = as.matrix(ge_resampled_new),
+                                     diameter = 8, 
+                                     num.Sphere.resamples = 1000, 
+                                     gene.id = rownames(ge_new),
+                                     decay_only = TRUE
+                                     ) # Took too much time didn't run underneath
+
+  X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_new_results$p.Decay))
+  
+  W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_new),colnames(A)%in%rownames(ge_new)])
+  X0_perm_new <- perm_X0(X0_adjusted, r = 50, W_new, seed_n = 2)
+  
+  Xs_new <- ND(X0_perm_new, W_new, cores = 2)
+  
+  ind_adj_new <- neighbour_index(W_new)
+  
+  mND_score_new <- mND(Xs_new, ind_adj_new, k=3, cores = 2)
+  
+  mND_score_new <- signif_assess(mND_score_new)
+
+## GeneSurrounder on mND
+mND_sig_genes <- rownames(mND_score$mND)[mND_score$mND$mNDp <= 0.05]
+
+ge_mND_filtered <- ge[mND_sig_genes]
+ge_mND_filtered <- ge_mND_filtered[ge_mND_filtered != 0]
+
+ge_cor_mND <- calcCorMatrix(ge_mND_filtered, corMethod = "pearson", exprName = "ge_mND_filtered", useMethod = "everything")
+
+ge_resampled_mND <- data.frame(matrix(ncol = length(ge_mND_filtered), nrow = 1000))
+colnames(ge_resampled_mND) <- names(ge_mND_filtered)
+
+for(i in 1:1000){
+  ge_resampled_mND[i,] <- sample(ge_mND_filtered, length(ge_mND_filtered), replace = TRUE)
+}
+
+gs_new_results <- run_geneSurrounder(distance.matrix = ge_dist, 
+                                     cor.matrix = ge_cor_mND, 
+                                     geneStats.observed = ge_mND_filtered,
+                                     perm.geneStats.matrix = as.matrix(ge_resampled_mND),
+                                     diameter = diam, 
+                                     num.Sphere.resamples = 1000, 
+                                     gene.id = names(ge_mND_filtered),
+                                     decay_only = TRUE
+)
+  
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
 # Check GeneSurrounder.R line 325
@@ -74,6 +266,12 @@ gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
 # Created for loop to run gs on each gene, calculate p.Fisher, and keep results for min(p.Fisher) only
 # -2(ln(p.Sphere) + ln(p.Decay)) does not give a p-value. It gives X2 distribution with 4 degrees of freedom
 # How to convert to p-value?
-
+#### UPDATE
+# Converted to p-value with pchisq in GeneSurrounder.R
+# geneNIDG() now outputs p.Fisher
+# GeneSurrounder requires scores per sample, modified it to calculate p.Decay only with L2 values
+# Still time intensive, couldn't run genesurrounder on all genes to have -log10(p.Decay) as input to mND. The code is written in any case
+# Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
+# Currently running
 
 
