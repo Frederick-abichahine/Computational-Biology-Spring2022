@@ -8,6 +8,7 @@ library(tidyverse)
 #library(rsample)
 setwd("Desktop/LAU/Spring 2022/BIF 498HG (CSC 613)/Assignments/Final Project/Implementation")
 source("GeneSurrounder.R")
+source("calc_p.R")
 
 data(X0)
 data(A)
@@ -51,7 +52,7 @@ genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(ge_cor))
 
 ge_resampled <- data.frame(matrix(ncol = length(ge_filtered), nrow = 1000))
 colnames(ge_resampled) <- rownames(data.frame(ge_filtered))
-
+set.seed(123)
 for(i in 1:1000){
   ge_resampled[i,] <- sample(ge_filtered, length(ge_filtered), replace = TRUE)
 }
@@ -106,7 +107,8 @@ run_geneSurrounder <- function(distance.matrix,
                                diameter,
                                num.Sphere.resamples = 1,
                                gene.id,
-                               decay_only = TRUE){
+                               decay_only = TRUE,
+                               file_name = "gs_results.csv"){
   genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(cor.matrix))
   gs_results <- data.frame()
   time <- vector()
@@ -132,7 +134,7 @@ run_geneSurrounder <- function(distance.matrix,
     print(paste("Time:", time[i], ""))
   }
   gs_results <- gs_results %>% mutate(time = time)
-  write.csv(gs_results, "gs_result_1.csv")
+  write.csv(gs_results, file_name)
   gs_results
   }else{
     for(i in 1:length(gene.id)){
@@ -196,14 +198,14 @@ run_geneSurrounder <- function(distance.matrix,
       print(paste("Time:", time[i], ""))
     }
     gs_results <- gs_results %>% mutate(time = time)
-    write.csv(gs_results, "gs_result_decay_only.csv")
+    write.csv(gs_results, file_name)
     gs_results
   }
 }
 
 ge_resampled_new <- data.frame(matrix(ncol = nrow(ge_new), nrow = 1000))
 colnames(ge_resampled_new) <- rownames(ge_new)
-
+set.seed(123)
 for(i in 1:1000){
   ge_resampled_new[i,] <- sample(ge_new[,1], nrow(ge_new), replace = TRUE)
 }
@@ -241,7 +243,7 @@ ge_cor_mND <- calcCorMatrix(ge_mND_filtered, corMethod = "pearson", exprName = "
 
 ge_resampled_mND <- data.frame(matrix(ncol = length(ge_mND_filtered), nrow = 1000))
 colnames(ge_resampled_mND) <- names(ge_mND_filtered)
-
+set.seed(123)
 for(i in 1:1000){
   ge_resampled_mND[i,] <- sample(ge_mND_filtered, length(ge_mND_filtered), replace = TRUE)
 }
@@ -255,18 +257,81 @@ gs_new_results <- run_geneSurrounder(distance.matrix = ge_dist,
                                      gene.id = names(ge_mND_filtered),
                                      decay_only = TRUE
 )
-  
+
+ggplot(gs_new_results, aes(p.Decay)) +
+  geom_density()
+ggplot(gs_new_results, aes(radius)) +
+  geom_bar()
+ggplot(gs_new_results, aes(time)) +
+  geom_density()
+sum(gs_new_results$time)/3600
+
+######### P values need to be based on ND score not mND (excluding top k neighbors)
+NDp <- data.frame(calc_p(Xs))
+
+NDp_filtered_genes <- rownames(NDp %>% filter(L1 <= 0.05 | L2 <= 0.05))
+ge_NDp_filtered <- X0[NDp_filtered_genes,2]
+ge_NDp_filtered <- ge_NDp_filtered[ge_NDp_filtered > 0]
+ge_cor_NDp <- calcCorMatrix(ge_NDp_filtered, corMethod = "pearson", exprName = "ge_NDp_filtered", useMethod = "everything")
+
+ge_resampled_NDp <- data.frame(matrix(ncol = length(ge_NDp_filtered), nrow = 1000))
+colnames(ge_resampled_NDp) <- names(ge_NDp_filtered)
+set.seed(123)
+for(i in 1:1000){
+  ge_resampled_NDp[i,] <- sample(ge_NDp_filtered, length(ge_NDp_filtered), replace = TRUE)
+}
+
+gs_NDp_filtered_results <- run_geneSurrounder(distance.matrix = ge_dist, 
+                                     cor.matrix = ge_cor_NDp, 
+                                     geneStats.observed = ge_NDp_filtered,
+                                     perm.geneStats.matrix = as.matrix(ge_resampled_NDp),
+                                     diameter = diam, 
+                                     num.Sphere.resamples = 1000, 
+                                     gene.id = names(ge_NDp_filtered),
+                                     decay_only = TRUE
+)
+
+ggplot(gs_NDp_filtered_results, aes(p.Decay)) +
+  geom_density()
+ggplot(gs_NDp_filtered_results, aes(radius)) +
+  geom_bar()
+ggplot(gs_NDp_filtered_results, aes(time)) +
+  geom_density()
+sum(gs_NDp_filtered_results$time)/60
+### These results can then be used to adjust top k neighbors in mND
+
+### GS on all genes (trial)
+ge_no_0 <- data.frame(ge[ge > 0])
+ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0", useMethod = "everything")
+
+ge_resampled <- data.frame(matrix(ncol = length(ge[ge > 0]), nrow = 1000))
+colnames(ge_resampled) <- names(ge[ge > 0])
+set.seed(123)
+for(i in 1:1000){
+  ge_resampled[i,] <- sample(ge[ge > 0], length(ge[ge > 0]), replace = TRUE)
+}
+
+gs_results <- run_geneSurrounder(distance.matrix = ge_dist, 
+                                              cor.matrix = ge_cor, 
+                                              geneStats.observed = ge[ge > 0],
+                                              perm.geneStats.matrix = as.matrix(ge_resampled),
+                                              diameter = diam, 
+                                              num.Sphere.resamples = 1000, 
+                                              gene.id = names(ge[ge > 0]),
+                                              decay_only = TRUE,
+                                              file_name = "gs_all_results.csv"
+)
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
 # Check GeneSurrounder.R line 325
 # Error thrown: Error in cor.fk(abs(ge[igenes.names]), igenes.distances) : 
 #                       x and y must have same length.
-#### UPDATE
+#### UPDATE 1
 # GS only runs on 1 gene at a time, only outputs p.Sphere and p.Decay not p.Fisher
 # Created for loop to run gs on each gene, calculate p.Fisher, and keep results for min(p.Fisher) only
 # -2(ln(p.Sphere) + ln(p.Decay)) does not give a p-value. It gives X2 distribution with 4 degrees of freedom
 # How to convert to p-value?
-#### UPDATE
+#### UPDATE 2
 # Converted to p-value with pchisq in GeneSurrounder.R
 # geneNIDG() now outputs p.Fisher
 # GeneSurrounder requires scores per sample, modified it to calculate p.Decay only with L2 values
@@ -274,4 +339,6 @@ gs_new_results <- run_geneSurrounder(distance.matrix = ge_dist,
 # Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
 # Currently running
 
+## next
+## fix to apply to mND p value before top k neighbors
 
