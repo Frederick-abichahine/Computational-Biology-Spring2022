@@ -343,7 +343,7 @@ gs_results <- run_geneSurrounder(distance.matrix = ge_dist,
 # Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
 # Currently running
 #### UPDATE 3
-# Sample output was generated (gs_result_decay_only.csv with genes filtered based on mND scores)
+# Sample output was generated (gs_result_NDp_filter.csv with genes filtered based on mND scores)
 # Fixed so that genes can be filtered based on ND p-values (using calc_p() from calc_p.R taken from mND package)
 # Sample output for genes filtered by GE >= 10 are in gs_result_GE_filter.csv (done without parallelization)
 # Added parallelization to run_genesurrounder() to run on all genes (last chunk)
