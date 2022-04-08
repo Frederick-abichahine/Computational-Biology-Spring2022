@@ -108,12 +108,13 @@ run_geneSurrounder <- function(distance.matrix,
                                num.Sphere.resamples = 1,
                                gene.id,
                                decay_only = TRUE,
-                               file_name = "gs_results.csv"){
+                               file_name = "gs_results.csv",
+                               cores = 2){
   genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(cor.matrix))
   gs_results <- data.frame()
   time <- vector()
   if(!decay_only){
-  for(i in 1:length(gene.id)){
+    parallel::mclapply(1:length(gene.id), function(i){
     start_time <- Sys.time()
     print(paste("Run", i))
     
@@ -132,12 +133,12 @@ run_geneSurrounder <- function(distance.matrix,
     end_time <- Sys.time()
     time[i] <- end_time - start_time
     print(paste("Time:", time[i], ""))
-  }
+  }, mc.cores = cores)
   gs_results <- gs_results %>% mutate(time = time)
   write.csv(gs_results, file_name)
   gs_results
   }else{
-    for(i in 1:length(gene.id)){
+    gs_results <- parallel::mclapply(1:length(gene.id), function(i){
       start_time <- Sys.time()
       print(paste("Run", i))
       distances <- distance.matrix[gene.id[i],
@@ -192,14 +193,17 @@ run_geneSurrounder <- function(distance.matrix,
                  p.Decay = p.Decay)
       
       print(gs[which.min(gs$p.Decay),])
-      gs_results <- rbind(gs_results, gs[which.min(gs$p.Decay),])
+      gs_results <- gs[which.min(gs$p.Decay),]
+      #gs_results <- rbind(gs_results, gs[which.min(gs$p.Decay),])
       end_time <- Sys.time()
-      time[i] <- end_time - start_time
+      #time[i] <- end_time - start_time
+      gs_results$time <- end_time - start_time
       print(paste("Time:", time[i], ""))
-    }
-    gs_results <- gs_results %>% mutate(time = time)
+      return(gs_results)
+    }, mc.cores = cores)
+    #gs_results <- gs_results %>% mutate(time = time)
     write.csv(gs_results, file_name)
-    gs_results
+    return(gs_results)
   }
 }
 
@@ -338,7 +342,14 @@ gs_results <- run_geneSurrounder(distance.matrix = ge_dist,
 # Still time intensive, couldn't run genesurrounder on all genes to have -log10(p.Decay) as input to mND. The code is written in any case
 # Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
 # Currently running
+#### UPDATE 3
+# Sample output was generated (gs_result_decay_only.csv with genes filtered based on mND scores)
+# Fixed so that genes can be filtered based on ND p-values (using calc_p() from calc_p.R taken from mND package)
+# Sample output for genes filtered by GE >= 10 are in gs_result_GE_filter.csv (done without parallelization)
+# Added parallelization to run_genesurrounder() to run on all genes (last chunk)
+# Couldn't execute because system storage got full
 
 ## next
-## fix to apply to mND p value before top k neighbors
+## Someone should try to run the last chunk
+## CSV output for run_genesurrounder() should be fixed because mclapply() for parallelization returns list (has to be df)
 
