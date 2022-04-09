@@ -30,11 +30,15 @@ install.packages("isma/isma_0.1.4.tar.gz", repos=NULL)
 ## Install mND - For Multi Network Diffusion
 install.packages("mND/mND_0.1.7.tar.gz", repos = NULL)
 ## ---------------------------------------------------------------------------
-## Get GeneSurrounder.R from github and Source it
+## Get GeneSurrounder.R and calc_p.R from github and Source it
 source("genesurrounder/GeneSurrounder.R")
+source("genesurrounder/run_geneSurrounder.R")
+source("mND/calc_p.R")
+
 ## ==========================================================================
 ## Loading Libraries
 ## ==========================================================================
+
 library(isma)
 library(mND)
 library(limma)
@@ -42,10 +46,12 @@ library(igraph)
 library(pcaPP)
 library(SciViews)
 library(tidyverse)
-library(rsample)
+#library(rsample)
+
 ## ==========================================================================
 ## Get Data Inputs
 ## ==========================================================================
+
 ## Now we are ready to start our analysis
 data(X0)
 data(A)
@@ -53,6 +59,7 @@ data(A)
 ## ==========================================================================
 ## First we Try mND Only - Without GeneSurrounder
 ## ==========================================================================
+
 ## Normalize the Adjacency Matrix
 W <- normalize_adj_mat(A)
 ## Permute the Layers Matrix
@@ -67,8 +74,11 @@ Xs <- ND(X0_perm, W)
 ## Get Indices of Adjacent Neighbours
 ind_adj <- neighbour_index(W)
 
-## Perform mND considering sets of 3-neighbors
-mND_score <- mND(Xs, ind_adj, k=3)
+## Perform mND considering sets of 3-neighbors - Non-Windows
+mND_score <- mND(Xs, ind_adj, k = 3, cores = 2)
+
+## Perform mND considering sets of 3-neighbors - Windows
+mND_score <- mND(Xs, ind_adj, k = 3)
 
 mND_score <- signif_assess(mND_score)
 
@@ -134,152 +144,6 @@ ggplot(gs_results, aes(p.Fisher)) +
   geom_density()
 ggplot(gs_results, aes(time)) +
   geom_density()
-
-## mND on GeneSurrounder
-X0_new <- data.frame(X0) %>%
-  mutate(sum = L1 + L2) %>%
-  filter(sum > 0) %>%
-  select(-sum)
-
-ge_new <- X0_new %>% filter(L2 > 0) %>% select(L2)
-ge_cor_new <- calcCorMatrix(setNames(ge_new$L2, rownames(ge_new)), corMethod = "pearson", exprName = "ge_new", useMethod = "everything")
-
-run_geneSurrounder <- function(distance.matrix, 
-                               cor.matrix, 
-                               geneStats.observed, 
-                               perm.geneStats.matrix,
-                               diameter,
-                               num.Sphere.resamples = 1,
-                               gene.id,
-                               decay_only = TRUE,
-                               file_name = "gs_results.csv",
-                               cores = 2){
-  genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(cor.matrix))
-  gs_results <- data.frame()
-  time <- vector()
-  if(!decay_only){
-    parallel::mclapply(1:length(gene.id), function(i){
-    start_time <- Sys.time()
-    print(paste("Run", i))
-    
-    gs <- geneNIDG(distance.matrix = distance.matrix, 
-                   cor.matrix = cor.matrix, 
-                   geneStats.observed = geneStats.observed,
-                   perm.geneStats.matrix = perm.geneStats.matrix, 
-                   genes.assayedETnetwork = genes.assayedETnetwork, 
-                   diameter = diam, # diameter >= 8 # diameter < 8 gives an error due to geneid.d line 376 of GeneSurrounder.R
-                   num.Sphere.resamples = num.Sphere.resamples, 
-                   gene.id = gene.id[i] 
-    )
-    
-    print(gs[which.min(gs$p.Fisher),])
-    gs_results <- rbind(gs_results, gs[which.min(gs$p.Fisher),])
-    end_time <- Sys.time()
-    time[i] <- end_time - start_time
-    print(paste("Time:", time[i], ""))
-  }, mc.cores = cores)
-  gs_results <- gs_results %>% mutate(time = time)
-  write.csv(gs_results, file_name)
-  gs_results
-  }else{
-    gs_results <- parallel::mclapply(1:length(gene.id), function(i){
-      start_time <- Sys.time()
-      print(paste("Run", i))
-      distances <- distance.matrix[gene.id[i],
-                                   genes.assayedETnetwork]
-      
-      
-      sizes <- vapply(1:diameter,function(RADIUS){
-        
-        igenes.distances <- distances[distances <= RADIUS
-                                      & distances > 0]
-        
-        length(igenes.distances)
-        
-        
-      },
-      numeric(1))
-      observed.tau_b <- Observed.DecayDE(distance.matrix,
-                                         gene.id[i],
-                                         genes.assayedETnetwork,
-                                         diameter,
-                                         geneStats.observed)
-      
-      
-      null.tau_b <- Resample.DecayDE(distance.matrix,
-                                     gene.id[i],
-                                     genes.assayedETnetwork,
-                                     diameter,
-                                     perm.geneStats.matrix,
-                                     sizes)
-      
-      
-      num.Decay.resamples <- nrow(perm.geneStats.matrix)
-      
-      # proportion of null taub \LEQ observed i.e more discordant 
-      p.Decay <- vapply(1:diameter,function(distance){
-        
-        observed.p <- observed.tau_b[distance]
-        
-        null.p <- null.tau_b[distance,1:num.Decay.resamples]
-        
-        return(length(null.p[null.p <= observed.p])/length(null.p))
-        
-      },
-      numeric(1))
-      
-      p.Decay[p.Decay == 0] <- 1/(num.Decay.resamples+1)
-      
-      gs <- data.frame(gene.id = rep(gene.id[i],diameter),
-                 radius = 1:diameter,
-                 size = sizes,
-                 observed.tau_b = observed.tau_b,
-                 p.Decay = p.Decay)
-      
-      print(gs[which.min(gs$p.Decay),])
-      gs_results <- gs[which.min(gs$p.Decay),]
-      #gs_results <- rbind(gs_results, gs[which.min(gs$p.Decay),])
-      end_time <- Sys.time()
-      #time[i] <- end_time - start_time
-      gs_results$time <- end_time - start_time
-      print(paste("Time:", time[i], ""))
-      return(gs_results)
-    }, mc.cores = cores)
-    #gs_results <- gs_results %>% mutate(time = time)
-    write.csv(gs_results, file_name)
-    return(gs_results)
-  }
-}
-
-ge_resampled_new <- data.frame(matrix(ncol = nrow(ge_new), nrow = 1000))
-colnames(ge_resampled_new) <- rownames(ge_new)
-set.seed(123)
-for(i in 1:1000){
-  ge_resampled_new[i,] <- sample(ge_new[,1], nrow(ge_new), replace = TRUE)
-}
-
-gs_new_results <- run_geneSurrounder(distance.matrix = ge_dist, 
-                                     cor.matrix = ge_cor_new, 
-                                     geneStats.observed = setNames(ge_new$L2, rownames(ge_new)),
-                                     perm.geneStats.matrix = as.matrix(ge_resampled_new),
-                                     diameter = 8, 
-                                     num.Sphere.resamples = 1000, 
-                                     gene.id = rownames(ge_new),
-                                     decay_only = TRUE
-                                     ) # Took too much time didn't run underneath
-
-  X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_new_results$p.Decay))
-  
-  W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_new),colnames(A)%in%rownames(ge_new)])
-  X0_perm_new <- perm_X0(X0_adjusted, r = 50, W_new, seed_n = 2)
-  
-  Xs_new <- ND(X0_perm_new, W_new, cores = 2)
-  
-  ind_adj_new <- neighbour_index(W_new)
-  
-  mND_score_new <- mND(Xs_new, ind_adj_new, k=3, cores = 2)
-  
-  mND_score_new <- signif_assess(mND_score_new)
 
 ## GeneSurrounder on mND
 mND_sig_genes <- rownames(mND_score$mND)[mND_score$mND$mNDp <= 0.05]
@@ -348,7 +212,8 @@ ggplot(gs_NDp_filtered_results, aes(time)) +
 sum(gs_NDp_filtered_results$time)/60
 ### These results can then be used to adjust top k neighbors in mND
 
-### GS on all genes (trial)
+
+## mND on GeneSurrounder
 ge_no_0 <- data.frame(ge[ge > 0])
 ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0", useMethod = "everything")
 
@@ -359,16 +224,31 @@ for(i in 1:1000){
   ge_resampled[i,] <- sample(ge[ge > 0], length(ge[ge > 0]), replace = TRUE)
 }
 
-gs_results <- run_geneSurrounder(distance.matrix = ge_dist, 
-                                              cor.matrix = ge_cor, 
-                                              geneStats.observed = ge[ge > 0],
-                                              perm.geneStats.matrix = as.matrix(ge_resampled),
-                                              diameter = diam, 
-                                              num.Sphere.resamples = 1000, 
-                                              gene.id = names(ge[ge > 0]),
-                                              decay_only = TRUE,
-                                              file_name = "gs_all_results.csv"
-)
+gs_results_4 <- run_geneSurrounder(distance.matrix = ge_dist,
+                                    cor.matrix = ge_cor, 
+                                    geneStats.observed = ge[ge > 0],
+                                    perm.geneStats.matrix = as.matrix(ge_resampled),
+                                    diameter = diam, 
+                                    num.Sphere.resamples = 1000, 
+gene.id = names(ge[ge > 0][3001:4000]), #Set for next run (not done yet)
+                                    decay_only = TRUE,
+                                    file_name = "gs_all_results_4.csv"
+                                   ) # Took too much time, running chunks, didn't run underneath
+
+X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_new_results$p.Decay))
+
+W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_new),colnames(A)%in%rownames(ge_new)])
+X0_perm_new <- perm_X0(X0_adjusted, r = 50, W_new, seed_n = 2)
+
+Xs_new <- ND(X0_perm_new, W_new, cores = 2)
+
+ind_adj_new <- neighbour_index(W_new)
+
+mND_score_new <- mND(Xs_new, ind_adj_new, k=3, cores = 2)
+
+mND_score_new <- signif_assess(mND_score_new)
+
+
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
 # Check GeneSurrounder.R line 325
@@ -392,8 +272,15 @@ gs_results <- run_geneSurrounder(distance.matrix = ge_dist,
 # Sample output for genes filtered by GE >= 10 are in gs_result_GE_filter.csv (done without parallelization)
 # Added parallelization to run_genesurrounder() to run on all genes (last chunk)
 # Couldn't execute because system storage got full
+#### UPDATE 4
+# run_genesurrounder() fixed to output df
+# Function was moved to genesurrounder/run_geneSurrounder.R, in case you are using Windows set cores = 1
+# currently running it on 1000 genes at a time to get complete output
+# Saved ge_resampled.csv so that we use same resampled data for all genes
+# Couldn't push to repo due to size > 100 mb, tell me if you need it and I'll send
+# gs_results_first_3000.csv saved (6397 genes remaining at a rate of 16.25 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit less than 29 hours of runtime remaining
 
 ## next
-## Someone should try to run the last chunk
-## CSV output for run_genesurrounder() should be fixed because mclapply() for parallelization returns list (has to be df)
-
+## Hopefully to run the remaining genes
+## Countdown: 3000/9397
