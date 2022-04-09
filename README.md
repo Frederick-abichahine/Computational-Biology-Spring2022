@@ -1,2 +1,2 @@
 # Computational-Biology-Final
-This repository includes ...
+GeneSurrounder & mND 

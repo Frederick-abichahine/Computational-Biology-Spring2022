@@ -1,3 +1,40 @@
+## ==========================================================================
+## Installing Libraries
+## ==========================================================================
+## 
+## Install Several Required packages:
+install.packages(c("devtools", "gplots",
+                   "ggplot2", "igraph",
+                   "lattice", "knitr","rsample",
+                   "RColorBrewer", "rmarkdown",
+                   "stringr", "UpSetR", "vcfR",
+                   "pcaPP", "SciViews", "tidyverse"))
+## ---------------------------------------------------------------------------
+## TCGAbiolinks package (from github):
+devtools::install_github(repo = "BioinformaticsFMRP/TCGAbiolinks")
+## ---------------------------------------------------------------------------
+## Bioconductor packages: (R >= 3.5)
+if(!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c("IRanges", "GenomicRanges", "GenomicFeatures",
+                       "org.Hs.eg.db", "Rsamtools",
+                       "SummarizedExperiment",
+                       "TxDb.Hsapiens.UCSC.hg19.knownGene",
+                       "TxDb.Hsapiens.UCSC.hg38.knownGene",
+                       "VariantAnnotation"))
+## ---------------------------------------------------------------------------
+## Install ISMA - For Integrative retrieval
+## and analysis of Mutations
+install.packages("isma/isma_0.1.4.tar.gz", repos=NULL)
+## ---------------------------------------------------------------------------
+## Install mND - For Multi Network Diffusion
+install.packages("mND/mND_0.1.7.tar.gz", repos = NULL)
+## ---------------------------------------------------------------------------
+## Get GeneSurrounder.R from github and Source it
+source("genesurrounder/GeneSurrounder.R")
+## ==========================================================================
+## Loading Libraries
+## ==========================================================================
 library(isma)
 library(mND)
 library(limma)
@@ -5,32 +42,39 @@ library(igraph)
 library(pcaPP)
 library(SciViews)
 library(tidyverse)
-#library(rsample)
-setwd("Desktop/LAU/Spring 2022/BIF 498HG (CSC 613)/Assignments/Final Project/Implementation")
-source("GeneSurrounder.R")
-source("calc_p.R")
-
+library(rsample)
+## ==========================================================================
+## Get Data Inputs
+## ==========================================================================
+## Now we are ready to start our analysis
 data(X0)
 data(A)
 
-###########################
-### mND only      #########
-###########################
+## ==========================================================================
+## First we Try mND Only - Without GeneSurrounder
+## ==========================================================================
+## Normalize the Adjacency Matrix
 W <- normalize_adj_mat(A)
+## Permute the Layers Matrix
 X0_perm <- perm_X0(X0, r = 50, W, seed_n = 2)
 
+## Perform Network Diffusion - Non-Windows
 Xs <- ND(X0_perm, W, cores = 2)
-#data(Xs)
 
+## Perform Network Diffusion - Windows
+Xs <- ND(X0_perm, W)
+
+## Get Indices of Adjacent Neighbours
 ind_adj <- neighbour_index(W)
 
-mND_score <- mND(Xs, ind_adj, k=3, cores = 2)
+## Perform mND considering sets of 3-neighbors
+mND_score <- mND(Xs, ind_adj, k=3)
 
 mND_score <- signif_assess(mND_score)
 
-###########################
-### GeneSurrounder ########
-###########################
+## ==========================================================================
+## GeneSurrounder
+## ==========================================================================
 
 ## Preprocessing
 ge <- X0[,2]
