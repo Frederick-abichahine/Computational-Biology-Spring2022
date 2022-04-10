@@ -83,7 +83,7 @@ mND_score <- mND(Xs, ind_adj, k = 3)
 mND_score <- signif_assess(mND_score)
 
 ## ==========================================================================
-## GeneSurrounder
+## GeneSurrounder (Trial)
 ## ==========================================================================
 
 ## Preprocessing
@@ -145,7 +145,10 @@ ggplot(gs_results, aes(p.Fisher)) +
 ggplot(gs_results, aes(time)) +
   geom_density()
 
-## GeneSurrounder on mND
+## ==========================================================================
+## GeneSurrounder on mND (Trial)
+## ==========================================================================
+
 mND_sig_genes <- rownames(mND_score$mND)[mND_score$mND$mNDp <= 0.05]
 
 ge_mND_filtered <- ge[mND_sig_genes]
@@ -212,8 +215,17 @@ ggplot(gs_NDp_filtered_results, aes(time)) +
 sum(gs_NDp_filtered_results$time)/60
 ### These results can then be used to adjust top k neighbors in mND
 
-
+## ==========================================================================
 ## mND on GeneSurrounder
+## ==========================================================================
+
+# Step 1: GeneSurrounder
+
+X0_new <- data.frame(X0) %>%
+  mutate(sum = L1 + L2) %>%
+  filter(sum > 0) %>%
+  select(-sum)
+
 ge_no_0 <- data.frame(ge[ge > 0])
 ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0", useMethod = "everything")
 
@@ -224,20 +236,20 @@ for(i in 1:1000){
   ge_resampled[i,] <- sample(ge[ge > 0], length(ge[ge > 0]), replace = TRUE)
 }
 
-gs_results_4 <- run_geneSurrounder(distance.matrix = ge_dist,
+gs_results_4 <- run_geneSurrounder(distance.matrix = ge_dist, 
                                     cor.matrix = ge_cor, 
                                     geneStats.observed = ge[ge > 0],
                                     perm.geneStats.matrix = as.matrix(ge_resampled),
                                     diameter = diam, 
                                     num.Sphere.resamples = 1000, 
-gene.id = names(ge[ge > 0][3001:4000]), #Set for next run (not done yet)
+                                    gene.id = names(ge[ge > 0][3001:4000]),
                                     decay_only = TRUE,
                                     file_name = "gs_all_results_4.csv"
                                    ) # Took too much time, running chunks, didn't run underneath
 
-X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_new_results$p.Decay))
+X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_results_all$p.Decay)*L2)
 
-W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_new),colnames(A)%in%rownames(ge_new)])
+W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_no_0),colnames(A)%in%rownames(ge_no_0)])
 X0_perm_new <- perm_X0(X0_adjusted, r = 50, W_new, seed_n = 2)
 
 Xs_new <- ND(X0_perm_new, W_new, cores = 2)
@@ -277,10 +289,14 @@ mND_score_new <- signif_assess(mND_score_new)
 # Function was moved to genesurrounder/run_geneSurrounder.R, in case you are using Windows set cores = 1
 # currently running it on 1000 genes at a time to get complete output
 # Saved ge_resampled.csv so that we use same resampled data for all genes
-# Couldn't push to repo due to size > 100 mb, tell me if you need it and I'll send
+# Couldn't push to repo due to size > 100 mb, tell me if you need it and I'll send or set.seed(123)
+# Seeds on R were problematic before, but output of ge_resampled seems consitent here
 # gs_results_first_3000.csv saved (6397 genes remaining at a rate of 16.25 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
 # --> a bit less than 29 hours of runtime remaining
+#### UPDATE 5
+# gs_results_first_4000.csv saved (5397 genes remaining at an updated rate of 16.4 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit more than 24 hours 30 minutes of runtime remaining
 
 ## next
 ## Hopefully to run the remaining genes
-## Countdown: 3000/9397
+## Countdown: 4000/9397
