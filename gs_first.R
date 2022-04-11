@@ -82,6 +82,9 @@ mND_score <- mND(Xs, ind_adj, k = 3)
 
 mND_score <- signif_assess(mND_score)
 
+#saveRDS(mND_score, "Data/mND_scores.rds")
+#mND_score <- readRDS("Data/mND_scores.rds")
+
 ## ==========================================================================
 ## GeneSurrounder (Trial)
 ## ==========================================================================
@@ -221,10 +224,13 @@ sum(gs_NDp_filtered_results$time)/60
 
 # Step 1: GeneSurrounder
 
-X0_new <- data.frame(X0) %>%
-  mutate(sum = L1 + L2) %>%
-  filter(sum > 0) %>%
-  select(-sum)
+#X0_new <- data.frame(X0) %>%
+#  mutate(sum = L1 + L2) %>%
+#  filter(sum > 0) %>%
+#  select(-sum)
+
+data(X0)
+ge <- X0[,2]
 
 ge_no_0 <- data.frame(ge[ge > 0])
 ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0", useMethod = "everything")
@@ -236,30 +242,46 @@ for(i in 1:1000){
   ge_resampled[i,] <- sample(ge[ge > 0], length(ge[ge > 0]), replace = TRUE)
 }
 
-gs_results_4 <- run_geneSurrounder(distance.matrix = ge_dist, 
+gs_results_all <- run_geneSurrounder(distance.matrix = ge_dist, 
                                     cor.matrix = ge_cor, 
                                     geneStats.observed = ge[ge > 0],
                                     perm.geneStats.matrix = as.matrix(ge_resampled),
                                     diameter = diam, 
                                     num.Sphere.resamples = 1000, 
-                                    gene.id = names(ge[ge > 0][3001:4000]),
+                                    gene.id = names(ge[ge > 0]),
                                     decay_only = TRUE,
-                                    file_name = "gs_all_results_4.csv"
+                                    file_name = "gs_results_all.csv"
                                    ) # Took too much time, running chunks, didn't run underneath
 
-X0_adjusted <- X0_new %>% mutate(L2 = -log10(gs_results_all$p.Decay)*L2)
+#library(lubridate)
+#gs_results_all_6000 <- gs_results_all_6000 %>% mutate(time = duration(time)) %>% select(-X)
+rownames(gs_results_all) <- gs_results_all$gene.id
 
-W_new <- normalize_adj_mat(A[rownames(A)%in%rownames(ge_no_0),colnames(A)%in%rownames(ge_no_0)])
-X0_perm_new <- perm_X0(X0_adjusted, r = 50, W_new, seed_n = 2)
+X0_gs_adjusted <- data.frame(X0) %>%
+  rownames_to_column('rn')  %>%
+  mutate(L2 = if_else(rn %in% gs_results_all$gene.id, -log10(gs_results_all[rn,]$p.Decay)*L2, L2)) %>%
+  column_to_rownames('rn')
 
-Xs_new <- ND(X0_perm_new, W_new, cores = 2)
+X0_gs_adjusted <- as.matrix(X0_gs_adjusted)
 
-ind_adj_new <- neighbour_index(W_new)
+ggplot(data.frame(X0), aes(L2)) + geom_density()
+ggplot(data.frame(X0_gs_adjusted), aes(L2)) + geom_density()
+
+data(A)
+W <- normalize_adj_mat(A)
+
+X0_perm_new <- perm_X0(X0_gs_adjusted, r = 50, W, seed_n = 2)
+
+Xs_new <- ND(X0_perm_new, W, cores = 2)
+
+ind_adj_new <- neighbour_index(W)
 
 mND_score_new <- mND(Xs_new, ind_adj_new, k=3, cores = 2)
 
 mND_score_new <- signif_assess(mND_score_new)
 
+#saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
+#mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
 
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
@@ -296,7 +318,24 @@ mND_score_new <- signif_assess(mND_score_new)
 #### UPDATE 5
 # gs_results_first_4000.csv saved (5397 genes remaining at an updated rate of 16.4 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
 # --> a bit more than 24 hours 30 minutes of runtime remaining
+#### UPDATE 6
+# gs_results_first_5000.csv saved (4397 genes remaining at an updated rate of 16.65 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 20 hours 20 minutes of runtime remaining
+#### UPDATE 7
+# gs_results_first_6000.csv saved (3397 genes remaining at an updated rate of 16.62 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 15 hours 30 minutes of runtime remaining
+#### UPDATE 8
+# gs_results_first_7000.csv saved (2397 genes remaining at an updated rate of 16.54 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 11 hours 00 minutes of runtime remaining
+#### UPDATE 9
+# gs_results_first_8000.csv saved (1397 genes remaining at an updated rate of 16.47 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit more than 6 hours 36 minutes of runtime remaining
+#### UPDATE 10
+# gs_results_all.csv saved --> rate: 16.39 secs/gene using 2 cores
+## Countdown: 9397/9397
+# Ran mND with initial and gs adjusted scores (saved as mND_scores.rds and mND_gs_adjusted_scores.rds in Data folder)
+# We have to see how to validate now: visualizations, metrics, maybe checking if genes that were enhanced by gs were new modules in mND
 
 ## next
-## Hopefully to run the remaining genes
-## Countdown: 4000/9397
+# Evaluation
+# Comparison with mND alone
