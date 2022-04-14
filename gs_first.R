@@ -66,10 +66,12 @@ W <- normalize_adj_mat(A)
 X0_perm <- perm_X0(X0, r = 50, W, seed_n = 2)
 
 ## Perform Network Diffusion - Non-Windows
-Xs <- ND(X0_perm, W, cores = 2)
+#Xs <- ND(X0_perm, W, cores = 2)
 
 ## Perform Network Diffusion - Windows
-Xs <- ND(X0_perm, W)
+#Xs <- ND(X0_perm, W)
+#saveRDS(Xs, "Data/Xs.rds")
+data(Xs)
 
 ## Get Indices of Adjacent Neighbours
 ind_adj <- neighbour_index(W)
@@ -83,7 +85,6 @@ mND_score <- mND(Xs, ind_adj, k = 3)
 mND_score <- signif_assess(mND_score)
 
 #saveRDS(mND_score, "Data/mND_scores.rds")
-#mND_score <- readRDS("Data/mND_scores.rds")
 
 ## ==========================================================================
 ## GeneSurrounder (Trial)
@@ -248,13 +249,15 @@ gs_results_all <- run_geneSurrounder(distance.matrix = ge_dist,
                                     perm.geneStats.matrix = as.matrix(ge_resampled),
                                     diameter = diam, 
                                     num.Sphere.resamples = 1000, 
-                                    gene.id = names(ge[ge > 0]),
+                                    gene.id = names(ge[ge > 0]), #subset for chunks
                                     decay_only = TRUE,
                                     file_name = "gs_results_all.csv"
-                                   ) # Took too much time, running chunks, didn't run underneath
+                                   ) # Took too much time, ran in chunks
 
-#library(lubridate)
-#gs_results_all_6000 <- gs_results_all_6000 %>% mutate(time = duration(time)) %>% select(-X)
+#write.csv(gs_results_all, "Data/gs_results_all.csv")
+
+library(lubridate)
+gs_results_all <- read.csv("Data/gs_results_all.csv") %>% mutate(time = duration(time)) %>% select(-X)
 rownames(gs_results_all) <- gs_results_all$gene.id
 
 X0_gs_adjusted <- data.frame(X0) %>%
@@ -263,25 +266,108 @@ X0_gs_adjusted <- data.frame(X0) %>%
   column_to_rownames('rn')
 
 X0_gs_adjusted <- as.matrix(X0_gs_adjusted)
+#saveRDS(X0_gs_adjusted, "Data/X0_gs_adjusted.rds")
 
 ggplot(data.frame(X0), aes(L2)) + geom_density()
 ggplot(data.frame(X0_gs_adjusted), aes(L2)) + geom_density()
 
 data(A)
 W <- normalize_adj_mat(A)
+ind_adj <- neighbour_index(W)
 
 X0_perm_new <- perm_X0(X0_gs_adjusted, r = 50, W, seed_n = 2)
 
 Xs_new <- ND(X0_perm_new, W, cores = 2)
+#saveRDS(Xs_new, "Data/Xs_new.rds")
 
-ind_adj_new <- neighbour_index(W)
+mND_score_new_k2 <- mND(Xs_new, ind_adj, k=2, cores = 2)
+#mND_score_new <- mND(Xs_new, ind_adj, k=3, cores = 2)
 
-mND_score_new <- mND(Xs_new, ind_adj_new, k=3, cores = 2)
+mND_score_new_k2 <- signif_assess(mND_score_new_k2)
+#mND_score_new <- signif_assess(mND_score_new)
 
-mND_score_new <- signif_assess(mND_score_new)
-
+#saveRDS(mND_score_new_k2, "Data/mND_gs_adjusted_scores_k2.rds")
 #saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
+
+## ==========================================================================
+## Results
+## ==========================================================================
+
+#Load Data
+data(A)
+W <- normalize_adj_mat(A)
+ind_adj <- neighbour_index(W)
+
+data(X0)
+data(Xs)
+X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
+Xs_new <- readRDS("Data/Xs_new.rds")
+
+mND_score <- readRDS("Data/mND_scores.rds")
+mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
 #mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
+
+##### mND Alone results #####
+
+#H1: genes with a mutation frequency greater than zero;
+#H2: top 1200 differentially expressed genes (FDR < 10−7).
+#Further, we set the cardinalities of gene sets N1 and N2, containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
+Hl <- list(l1 = rownames(X0[X0[,1]>0,]), 
+           l2 = names(X0[order(X0[,2], decreasing = T),2][1:1200])
+)
+top_Nl <- unlist(lapply(Hl, function(x) length(x)))
+top_Nl
+
+class_res <- classification(mND_score, X0, Hl, top = top_Nl)
+
+#Classification of genes in every layer
+head(class_res$gene_class)
+
+#Occurrence of (M; L; I; NS) for each gene across layers
+head(class_res$occ_labels)
+
+plot_results(mND_score, class_res, W, n = 150, directory = "Results/mND_results/")
+
+#Optimizing k (Mac only)
+k_val <- seq(1,6,1)
+k_results <- optimize_k(Xs, X0, k_val, ind_adj, W, top = 200, cores = 2)
+k_results <- data.frame(k_results)
+colnames(k_results) <- k_val
+#write.csv(k_results, "Data/k_results.csv")
+# can also be loaded through data(k_results) but is a list not data.frame
+
+##### GS-Adjusted mND results #####
+
+
+#H1: genes with a mutation frequency greater than zero;
+#H2: top 1200 differentially expressed genes (FDR < 10−7 ???????????).
+#Further, we set the cardinalities of gene sets N1 and N2, containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
+
+Hl_new <- list(l1 = rownames(X0[X0[,1]>0,]), 
+           l2 = names(X0_gs_adjusted[order(X0_gs_adjusted[,2], decreasing = T),2][1:1200])
+)
+top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
+top_Nl_new
+class_res_new <- classification(mND_score_new_k2, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+#class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+
+#Classification of genes in every layer
+head(class_res_new$gene_class)
+
+#Occurrence of (M; L; I; NS) for each gene across layers
+head(class_res_new$occ_labels)
+
+plot_results(mND_score_new_k2, class_res_new, W, n = 150, directory = "Results/mND_results_new_k2/")
+#plot_results(mND_score_new, class_res_new, W, n = 150, directory = "Results/mND_results_new/")
+
+#Optimizing k (Mac only)
+k_results_new <- optimize_k(Xs_new, X0_gs_adjusted, k_val, ind_adj, W, top = 200, cores = 2)
+k_results_new <- data.frame(k_results_new)
+colnames(k_results_new) <- k_val
+#write.csv(k_results_new, "Data/k_results_new.csv")
+#k = 2 seems like a better choice in this case
+
+
 
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
@@ -335,7 +421,23 @@ mND_score_new <- signif_assess(mND_score_new)
 ## Countdown: 9397/9397
 # Ran mND with initial and gs adjusted scores (saved as mND_scores.rds and mND_gs_adjusted_scores.rds in Data folder)
 # We have to see how to validate now: visualizations, metrics, maybe checking if genes that were enhanced by gs were new modules in mND
+#### UPDATE 11
+# Added results for mND alone (k = 3) and GS adjusted mND (k = 2, k = 3) as indicated by k optimization
+# created .rds objects or .csv files for needed info to be loaded to run results, saved plots as well
 
 ## next
 # Evaluation
 # Comparison with mND alone
+# 1. We could probably check % transition from class to another (Isolated, Linker, Module, NotSignificant)
+# 2. Dr. Hanna, Frederick, and Ghadi discussed quantifying correlation between mND score of genes not selected 
+#    before GS (but selected after; lets say decayed genes) and connection of a gene to nodes labeled as M by mND alone (w/out GS)
+#    We discussed doing this at many distance thresholds to see if the correlation drops when M genes are further
+#    We would do mND score / distance to normalize (or maybe -log10(mNDp)/distance) and add up for all M genes that
+#    contain the gene of interest in their radius and are at a distance == threshold to gene of interest
+#    This score is calculated for decayed genes and we check correlation to mND adjusted (or -log10(mNDp adjusted))
+#    --> From here we can either take cut-off for this score (mND score / distance) to consider a gene decayed
+#        maybe trying many distance thresholds where genes selected are distance =< threshold and we check 
+#        where correlation stabilizes?? we need to try it and see the trend
+#       OR
+#        We could just leave the score as is (mND score / distance) to describe that the gene is 
+#        influenced by decay this much
