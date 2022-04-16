@@ -223,7 +223,7 @@ sum(gs_NDp_filtered_results$time)/60
 ## mND on GeneSurrounder
 ## ==========================================================================
 
-# Step 1: GeneSurrounder
+#### Step 1: GeneSurrounder ####
 
 #X0_new <- data.frame(X0) %>%
 #  mutate(sum = L1 + L2) %>%
@@ -256,6 +256,7 @@ gs_results_all <- run_geneSurrounder(distance.matrix = ge_dist,
 
 #write.csv(gs_results_all, "Data/gs_results_all.csv")
 
+#### Step 2: mND on GeneSurrounder - Adjusted scores ####
 library(lubridate)
 gs_results_all <- read.csv("Data/gs_results_all.csv") %>% mutate(time = duration(time)) %>% select(-X)
 rownames(gs_results_all) <- gs_results_all$gene.id
@@ -289,6 +290,7 @@ mND_score_new_k2 <- signif_assess(mND_score_new_k2)
 #saveRDS(mND_score_new_k2, "Data/mND_gs_adjusted_scores_k2.rds")
 #saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
 
+
 ## ==========================================================================
 ## Results
 ## ==========================================================================
@@ -303,6 +305,7 @@ data(Xs)
 X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
 Xs_new <- readRDS("Data/Xs_new.rds")
 
+#data(mND_score) #not same format as mND_score.rds (i think old format)
 mND_score <- readRDS("Data/mND_scores.rds")
 mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
 #mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
@@ -367,7 +370,72 @@ colnames(k_results_new) <- k_val
 #write.csv(k_results_new, "Data/k_results_new.csv")
 #k = 2 seems like a better choice in this case
 
+## ==========================================================================
+## Analysis
+## ==========================================================================
 
+##### % Label change #####
+
+#Sanity check: L1 labels changed even more than layer 2... why?
+sum(class_res_new$gene_class[,2] != class_res$gene_class[,2])
+
+shift_sm <- table(mND = class_res$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
+
+shift_ge <- table(mND = class_res$gene_class[,2], GS_adjusted_mND = class_res_new$gene_class[,2])
+
+# Percentages over mND genes
+results_ge_mND <- shift_ge
+for(i in 1:nrow(shift_ge)){
+  results_ge_mND[i,] <- (shift_ge[i,]/sum(shift_ge[i,]))*100
+}
+results_ge_mND
+# Total selected mND genes (I, L, M)
+11796 - sum(shift_ge[4,])
+
+# Percentages over GS_adjusted genes
+results_ge_GS_adjusted <- shift_ge
+for(i in 1:ncol(shift_ge)){
+  results_ge_GS_adjusted[,i] <- (shift_ge[,i]/sum(shift_ge[,i]))*100
+}
+results_ge_GS_adjusted
+# Total selected GS-adjusted mND genes (I, L, M) --> -205 genes
+11796 - sum(shift_ge[,4])
+11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,]))
+
+# Percent over all genes
+(shift_ge/11796)*100
+
+##### Network Visualization #####
+library(visNetwork)
+library(RCy3)
+ls("package:igraph", pattern = "^layout_.")
+
+## mND graph
+genes_subset_mND <- class_res$gene_class %>% filter(L2 != "NS")
+A_subset_mND <- A[rownames(A) %in% rownames(genes_subset_mND), 
+                  colnames(A) %in% rownames(genes_subset_mND)]
+graph_mND <- graph_from_adjacency_matrix(A_subset_mND) %>% 
+             set_vertex_attr("class", value = genes_subset_mND[,2])
+vis_mND <- toVisNetworkData(graph_mND)
+visNetwork(nodes = vis_mND$nodes, edges = vis_mND$edges) %>%
+  visIgraphLayout(layout = "layout_") %>%
+  visOptions(nodesIdSelection = TRUE, selectedBy = "class") %>%
+  visNodes(color = vis_mND$nodes$class)
+#cytoscapePing()
+#createNetworkFromIgraph(graph_mND,new.title='mND')
+#cytoscape was taking time idk
+
+#1 = Isolated, 2 = Linker, 3 = Module
+## GS-adjusted mND graph
+genes_subset_adjusted_mND <- class_res_new$gene_class %>% filter(L2 != "NS")
+A_subset_adjusted_mND <- A[rownames(A) %in% rownames(genes_subset_adjusted_mND), 
+                  colnames(A) %in% rownames(genes_subset_adjusted_mND)]
+graph_adjusted_mND <- graph_from_adjacency_matrix(A_subset_adjusted_mND) %>%
+                      set_vertex_attr("class", value = genes_subset_adjusted_mND[,2])
+vis_adjusted_mND <- toVisNetworkData(graph_adjusted_mND)
+visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
+  visIgraphLayout(layout = "layout_in_circle") %>%
+  visOptions(nodesIdSelection = TRUE, selectedBy = "class")
 
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
@@ -421,11 +489,14 @@ colnames(k_results_new) <- k_val
 ## Countdown: 9397/9397
 # Ran mND with initial and gs adjusted scores (saved as mND_scores.rds and mND_gs_adjusted_scores.rds in Data folder)
 # We have to see how to validate now: visualizations, metrics, maybe checking if genes that were enhanced by gs were new modules in mND
-#### UPDATE 11
+#### UPDATE 11 
 # Added results for mND alone (k = 3) and GS adjusted mND (k = 2, k = 3) as indicated by k optimization
 # created .rds objects or .csv files for needed info to be loaded to run results, saved plots as well
+#### UPDATE 12
+# Added shift from class to class percentages
+# Added network visualization for selected genes
 
-## next
+#### next ####
 # Evaluation
 # Comparison with mND alone
 # 1. We could probably check % transition from class to another (Isolated, Linker, Module, NotSignificant)
@@ -441,3 +512,5 @@ colnames(k_results_new) <- k_val
 #       OR
 #        We could just leave the score as is (mND score / distance) to describe that the gene is 
 #        influenced by decay this much
+# 3. We could visualize the 1200 genes for mND alone and GS-adjusted mND colored but I, L, M (3 colors)
+#    We could check for connectivity and overall topology
