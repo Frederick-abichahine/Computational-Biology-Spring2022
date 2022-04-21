@@ -594,6 +594,8 @@ dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
 mean(results_c_decay_score[dmdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 
+ggplot(as.data.frame(as.matrix(results_c_decay_score[dmdg_indices])), aes(V1)) + geom_density()
+ggplot(as.data.frame(as.matrix(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])), aes(V1)) + geom_density()
 ## We have a difference in mean cumulative decay score between new modules and other modules
 
 ## What next?
