@@ -1,0 +1,38 @@
+
+
+GeneSurrounder = Output = CSV File (Table) 
+	Index	Gene IDs	P.Decay		P.Sphere [requires data per sample]		P.Fisher [P.sphere required]
+	#rown
+
+
+If gene has max Radius of 7, we take all genes in this radius, we check the decay, 
+
+Module/Isolated/Linker ??
+Classify -> Decayed Gene 
+
+Decayed: This gene is only selected because its in the radius of a DE gene which would be normally labeled as module.
+
+600 genes were found to be significant ==> Decayed. 
+
+New genes can be: Decayed 
+
+
+For each gene, get the neighbours within the radius (in both cases before and after)
+check if any of the neighbours are selected in the new one but not in the old one
+
+But what if these genes are picked up by a different center?
+If they are picked by different center 
+
+When we run mND we pick a center, and then we pick the neighbors ==> Mark the center and the neighbours picked
+Gc1 ==> [G1,g2,g3]
+Gc2 ==> [G1,g2,g3]
+Gc3 ==> [G1,g2,g3]
+
+When we run new mND we will have the same thing.
+
+
+Then, from 
+For each gene, get the neighbours within the radius (in both cases before and after)
+check if any of the neighbours are selected in the new one but not in the old one
+
+

@@ -313,7 +313,7 @@ mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
 ##### mND Alone results #####
 
 #H1: genes with a mutation frequency greater than zero;
-#H2: top 1200 differentially expressed genes (FDR < 10−7).
+#H2: top 1200 differentially expressed genes (FDR < 10^-7).
 #Further, we set the cardinalities of gene sets N1 and N2, containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
 Hl <- list(l1 = rownames(X0[X0[,1]>0,]), 
            l2 = names(X0[order(X0[,2], decreasing = T),2][1:1200])
@@ -343,8 +343,9 @@ colnames(k_results) <- k_val
 
 
 #H1: genes with a mutation frequency greater than zero;
-#H2: top 1200 differentially expressed genes (FDR < 10−7 ???????????).
-#Further, we set the cardinalities of gene sets N1 and N2, containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
+#H2: top 1200 differentially expressed genes (FDR < 10^-7).
+#Further, we set the cardinalities of gene sets N1 and N2,
+#containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
 
 Hl_new <- list(l1 = rownames(X0[X0[,1]>0,]), 
            l2 = names(X0_gs_adjusted[order(X0_gs_adjusted[,2], decreasing = T),2][1:1200])
@@ -371,7 +372,7 @@ colnames(k_results_new) <- k_val
 #k = 2 seems like a better choice in this case
 
 ## ==========================================================================
-## Analysis
+## Analysis - Ghadi
 ## ==========================================================================
 
 ##### % Label change #####
@@ -437,6 +438,164 @@ visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
   visIgraphLayout(layout = "layout_in_circle") %>%
   visOptions(nodesIdSelection = TRUE, selectedBy = "class")
 
+## ================================
+## Running Analysis - Bilal
+## ================================
+#saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
+data(A)
+W <- normalize_adj_mat(A)
+ind_adj <- neighbour_index(W)
+
+data(X0)
+data(Xs)
+X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
+Xs_new <- readRDS("Data/Xs_new.rds")
+
+#data(mND_score) #not same format as mND_score.rds (i think old format)
+mND_score <- readRDS("Data/mND_scores.rds")
+mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
+mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
+
+#get new and old genes
+new_genes = rownames(mND_score_new$mND)[which(mND_score_new$mND$mNDp < 0.05)]
+old_genes = rownames(mND_score$mND)[which(mND_score$mND$mNDp < 0.05)]
+
+## Ratio - we have a 7% change in the genes
+length(which(!(new_genes %in% old_genes)))/length(rownames(mND_score$mND))
+
+length(new_genes)
+length(old_genes)
+
+## ================================
+## Old
+data(X0)
+Hl_old <- list(l1 = rownames(X0[X0[,1]>0,]), 
+           l2 = names(X0[order(X0[,2], decreasing = T),2][1:1200])
+)
+top_Nl_old <- unlist(lapply(Hl_old, function(x) length(x)))
+top_Nl_old
+class_res_old <- classification(mND_score, X0, Hl_old, top = top_Nl_old)
+head(class_res_old$gene_class)
+
+
+## New 
+Hl_new <- list(l1 = rownames(X0_gs_adjusted[X0_gs_adjusted[,1]>0,]), 
+               l2 = names(X0_gs_adjusted[order(X0_gs_adjusted[,2], decreasing = T),2][1:1200])
+)
+top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
+top_Nl_new
+class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+#Classification of genes in every layer
+head(class_res_new$gene_class)
+##-------------------------
+## After obtaining the classification of each gene
+## we wish to check the cumulative_decay_score on target genes
+## Target Genes are new genes that are obtained
+## Cumulative Decay Score = GE_neighbor/d_neighbor_target
+## Stategy:
+## For ever node in the graph:
+##  for all modules in the list of old modules:
+##    distance = get_distance (old_module, node)
+##    score[node] += Measure(old_module)/distance
+##------------------------------------------------
+## Now, this Measure could be taken as GE
+## or the adjusted -log_10(p-value)
+##-------------------------------------------------
+## First lets convert the Adjacency Matrix to Distance Matrix
+## install.packages("netmeta")
+library(netmeta)
+int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
+ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkName = "int_network")
+## Second, lets get the decay effect of each gene from gs_results_all
+gs_results_all <- read.csv("Data/gs_results_all.csv")
+## Get List of all old nodes classification
+old_class = class_res_old$gene_class[,2]
+## Remember - adjusted scores of genes
+X0_gs_adjusted
+
+## initialize empty vector
+results_c_decay_score = rep(0,nrow(ge_dist))
+## Now start the strategy:
+## For every gene
+for(i in seq(1,nrow(gs_results_all))){
+  ## Progress
+  ## install.packages("svMisc")
+  ## library(svMisc)
+  progress(i)
+  ## ----
+  gene = gs_results_all[i,]
+  g_id = gene$gene.id
+  g_rd = gene$radius
+  g_old_class = old_class[g_id]
+  ## Get the measure of the module node
+  ## we choose measyre as -log_10_pvalue
+  ## Other choice is original GE
+  measure = X0_gs_adjusted[i,2]
+  ##print(measure)
+  ## If the gene is an old module
+  if(g_old_class == "M"){
+    ## Traverse other genes in the surrounding radius
+    ## and update their cumulative_decay_score
+    for(j in seq(1, nrow(ge_dist))){
+      if (j == i){
+        next
+      }
+      ## Get distance between the two nodes
+      g_dist = ge_dist[i,j]
+      if (g_dist <= g_rd){
+        ## Update cumulative score of gene_j
+        results_c_decay_score[j] = as.numeric(results_c_decay_score[j]) + measure/g_dist
+      }
+    }
+  }
+}
+
+## ??
+cor(X0_gs_adjusted[,2], results_c_decay_score)
+
+## What next?
+## Check results_c_decay_score over new modules and old modules exclusively?
+## How to get indices of new and old modules
+
+
+##-------------------------
+#Sanity check: L1 labels changed even more than layer 2... why?
+sum(class_res_new$gene_class[,2] != class_res_old$gene_class[,2])
+
+shift_sm <- table(mND = class_res_old$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
+
+shift_ge <- table(mND = class_res_old$gene_class[,2], GS_adjusted_mND = class_res_new$gene_class[,2])
+
+
+
+# Percentages over mND genes
+results_ge_mND <- shift_ge
+for(i in 1:nrow(shift_ge)){
+  results_ge_mND[i,] <- (shift_ge[i,]/sum(shift_ge[i,]))*100
+}
+results_ge_mND
+# Total selected mND genes (I, L, M)
+11796 - sum(shift_ge[4,])
+
+# Percentages over GS_adjusted genes
+results_ge_GS_adjusted <- shift_ge
+for(i in 1:ncol(shift_ge)){
+  results_ge_GS_adjusted[,i] <- (shift_ge[,i]/sum(shift_ge[,i]))*100
+}
+results_ge_GS_adjusted
+# Total selected GS-adjusted mND genes (I, L, M) --> -205 genes
+11796 - sum(shift_ge[,4])
+11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,]))
+
+# Percent over all genes
+(shift_ge/11796)*100
+## ================================
+## ================================
+
+
+
+## ================================
+## ================================
 ######### NOTES ##########
 # unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
 # Check GeneSurrounder.R line 325
