@@ -510,23 +510,27 @@ ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkNam
 gs_results_all <- read.csv("Data/gs_results_all.csv")
 ## Get List of all old nodes classification
 old_class = class_res_old$gene_class[,2]
+## Get list of all new nodes classification
+new_class = class_res_new$gene_class[,2]
 ## Remember - adjusted scores of genes
 X0_gs_adjusted
 
 ## initialize empty vector
 results_c_decay_score = rep(0,nrow(ge_dist))
+new_module = rep(0,nrow(ge_dist))
 ## Now start the strategy:
 ## For every gene
 for(i in seq(1,nrow(gs_results_all))){
   ## Progress
   ## install.packages("svMisc")
   ## library(svMisc)
-  progress(i)
+  ##progress(i)
   ## ----
   gene = gs_results_all[i,]
   g_id = gene$gene.id
   g_rd = gene$radius
   g_old_class = old_class[g_id]
+  g_new_class = new_class[g_id]
   ## Get the measure of the module node
   ## we choose measyre as -log_10_pvalue
   ## Other choice is original GE
@@ -548,10 +552,37 @@ for(i in seq(1,nrow(gs_results_all))){
       }
     }
   }
+  ## Not old module - check if new, if yes put 1 in the vector
+  else{
+    if (g_new_class == "M"){
+      new_module[i] = 1
+    }
+  }
 }
 
-## ??
-cor(X0_gs_adjusted[,2], results_c_decay_score)
+## We have 69 new modules - validate this
+length(which(new_module==1))
+## How many modules are in new but are not in old in old but they are in new
+length(which(class_res_old$gene_class[,2]=="M"))
+length(which(class_res_new$gene_class[,2]=="M"))
+
+## Get md genes in new
+new_mdg = rownames(class_res_new$gene_class)[class_res_new$gene_class[,2] == "M"]
+old_mdg = rownames(class_res_old$gene_class)[class_res_old$gene_class[,2] == "M"]  
+length(which(new_mdg %in% old_mdg))
+
+## True - we have 69 genes as new modules previously not as modules
+length(which(!(new_mdg %in% old_mdg)))
+distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
+## length(distinct_mdg)
+
+## Indices of distinct mdg
+dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
+
+mean(results_c_decay_score[dmdg_indices])
+mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
+
+## We have a difference in mean cumulative decay score between new modules and other modules
 
 ## What next?
 ## Check results_c_decay_score over new modules and old modules exclusively?
