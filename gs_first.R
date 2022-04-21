@@ -492,6 +492,8 @@ Hl_new <- list(l1 = rownames(X0_gs_adjusted[X0_gs_adjusted[,1]>0,]),
 top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
 top_Nl_new
 class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+#class_res_new <- classification(mND_score_new_k2, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+
 #Classification of genes in every layer
 head(class_res_new$gene_class)
 ##-------------------------
@@ -541,7 +543,8 @@ for(i in seq(1,nrow(gs_results_all))){
   ## Get the measure of the module node
   ## we choose measyre as -log_10_pvalue
   ## Other choice is original GE
-  measure = X0_gs_adjusted[i,2]
+  #measure = X0_gs_adjusted[i,2]
+  measure <- -log10(gene$p.Decay)
   ##print(measure)
   ## If the gene is an old module
   if(g_old_class == "M"){
@@ -580,7 +583,7 @@ old_mdg = rownames(class_res_old$gene_class)[class_res_old$gene_class[,2] == "M"
 sum(new_mdg %in% old_mdg)
 
 ## True - we have 69 genes as new modules previously not as modules
-# Ghadi: 72
+# Ghadi: 72 with k = 2, 69 k = 3
 sum(!(new_mdg %in% old_mdg))
 distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
 ## length(distinct_mdg)
@@ -595,7 +598,8 @@ mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 
 ## What next?
 ## Check results_c_decay_score over new modules and old modules exclusively?
-## How to get indices of new and old modules
+## How to get indices of new and old modules --> Ghadi: You did get this above, no?
+## Significance <<
 
 
 ##-------------------------
