@@ -513,6 +513,7 @@ head(class_res_new$gene_class)
 ## First lets convert the Adjacency Matrix to Distance Matrix
 ## install.packages("netmeta")
 library(netmeta)
+
 int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
 ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkName = "int_network")
 ## Second, lets get the decay effect of each gene from gs_results_all
@@ -591,17 +592,28 @@ distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
 ## Indices of distinct mdg
 dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
 
+## Mean Results
 mean(results_c_decay_score[dmdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 
+## Distinct Density Plots
 ggplot(as.data.frame(as.matrix(results_c_decay_score[dmdg_indices])), aes(V1)) + geom_density()
 ggplot(as.data.frame(as.matrix(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])), aes(V1)) + geom_density()
-## We have a difference in mean cumulative decay score between new modules and other modules
 
-## What next?
-## Check results_c_decay_score over new modules and old modules exclusively?
-## How to get indices of new and old modules --> Ghadi: You did get this above, no?
-## Significance <<
+## Overlaying the Density Plots
+a = data.frame(cumulative_decay_score = results_c_decay_score[dmdg_indices])
+b = data.frame(y = results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
+ggplot() + 
+  geom_density(data = a, aes(x = cumulative_decay_score), 
+               fill = "#DAF7A6", color = "black", alpha = 0.7) + 
+  geom_density(data = b, aes(x = y),
+               fill = "#C70039", color = "black", alpha = 0.7)
+
+## Next: Significance Test between two vectors
+## The two vectors are:
+## 1. results_c_decay_score[dmdg_indices]
+## 2. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
+## ----------------------------------------------------------------------------
 
 
 ##-------------------------
