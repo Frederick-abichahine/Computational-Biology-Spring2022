@@ -582,19 +582,24 @@ sum(class_res_new$gene_class[,2]=="M")
 new_mdg = rownames(class_res_new$gene_class)[class_res_new$gene_class[,2] == "M"]
 old_mdg = rownames(class_res_old$gene_class)[class_res_old$gene_class[,2] == "M"]  
 sum(new_mdg %in% old_mdg)
-
+sum(!(old_mdg %in% new_mdg)) #32 (k=2) modules discarded by GS
 ## True - we have 69 genes as new modules previously not as modules
 # Ghadi: 72 with k = 2, 69 k = 3
 sum(!(new_mdg %in% old_mdg))
 distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
+discarded_mdg <- new_mdg[which(!(old_mdg %in% new_mdg))]
 ## length(distinct_mdg)
 
 ## Indices of distinct mdg
 dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
+discared_mdg_indices <- which(rownames(X0_gs_adjusted)%in%discarded_mdg)
 
 ## Mean Results
 mean(results_c_decay_score[dmdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
+
+mean(results_c_decay_score[discared_mdg_indices])
+mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))])
 
 ## Distinct Density Plots
 ggplot(as.data.frame(as.matrix(results_c_decay_score[dmdg_indices])), aes(V1)) + geom_density()
