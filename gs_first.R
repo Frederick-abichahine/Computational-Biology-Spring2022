@@ -377,7 +377,7 @@ colnames(k_results_new) <- k_val
 
 ##### % Label change #####
 
-#Sanity check: L1 labels changed even more than layer 2
+#Sanity check:
 class_res_new$gene_class <- class_res_new$gene_class[match(rownames(class_res$gene_class), rownames(class_res_new$gene_class)),]
 sum(class_res_new$gene_class[,1] != class_res$gene_class[,1])
 
@@ -622,8 +622,8 @@ ggplot() +
 
 
 ##-------------------------
-#Sanity check: L1 labels changed even more than layer 2... why?
-sum(class_res_new$gene_class[,2] != class_res_old$gene_class[,2])
+#Sanity check:
+sum(class_res_new$gene_class[,1] != class_res_old$gene_class[,1])
 
 shift_sm <- table(mND = class_res_old$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
 
@@ -652,10 +652,97 @@ results_ge_GS_adjusted
 
 # Percent over all genes
 (shift_ge/11796)*100
+
 ## ================================
+# Analyzing coverage of Breast Cancer Related Genes
 ## ================================
 
+# Getting Disease-related genes with AutoSeed (includes eDGAR, DrugBank, and MalaCards)
+library(Autoseed)
+bc_genes_search <- AutoSeed("breast cancer")
+bc_genes_search2 <- AutoSeed("breast carcinoma")
+bc_genes <- Reduce(union, c(bc_genes_search$edgar,bc_genes_search$malacards, bc_genes_search$drugbank,
+                            bc_genes_search2$edgar,bc_genes_search2$malacards, bc_genes_search2$drugbank))
+bc_genes_clean <- unique(vapply(bc_genes, function(x){return(unlist(strsplit(x, split='::', fixed=TRUE))[1])}, c("x")))
+# Matched distinct genes
+sum(distinct_mdg %in% bc_genes_clean)
+# Matched discarded genes
+sum(discarded_mdg %in% bc_genes_clean)
+# Matched old M genes
+sum(old_mdg %in% bc_genes_clean)
+# Matched new M genes
+sum(new_mdg %in% bc_genes_clean)
 
+genes_selected_old <- rownames(class_res_old$gene_class %>% filter(L2 != "NS"))
+genes_selected_new <- rownames(class_res_new$gene_class %>% filter(L2 != "NS"))
+
+# Matched selected old
+sum(genes_selected_old %in% bc_genes_clean)/length(bc_genes_clean)*100
+# Matched selected new
+sum(genes_selected_new %in% bc_genes_clean)/length(bc_genes_clean)*100
+
+# Analyzing coverage by mNDp cutoffs
+cutoffs <- seq(0.0001, 0.06, 0.0001)
+genes_selected_cutoffs <- data.frame(mNDp_cutoffs = 1:length(cutoffs), old = 1:length(cutoffs), new = 1:length(cutoffs), new_k2 = 1:length(cutoffs))
+for(i in 1:length(cutoffs)){
+  genes_cutoff_old <- rownames(mND_score$mND %>% filter(mNDp <= cutoffs[i]))# %>% filter(L2 != "NS"))
+  genes_cutoff_new <- rownames(mND_score_new$mND %>% filter(mNDp <= cutoffs[i]))# %>% filter(L2 != "NS"))
+  genes_cutoff_new_k2 <- rownames(mND_score_new_k2$mND %>% filter(mNDp <= cutoffs[i]))
+  print(paste("Cutoff:", i))
+  # Matched selected by mNDp cutoff old
+  old <- sum(genes_cutoff_old %in% bc_genes_clean)/length(bc_genes_clean)*100
+  print("Old")
+  print(old)
+  # Matched selected by mNDp cutoff new
+  new <- sum(genes_cutoff_new %in% bc_genes_clean)/length(bc_genes_clean)*100
+  print("New (k = 3)")
+  print(new)
+  # Matched selected by mNDp cutoff new k = 2
+  new_k2 <- sum(genes_cutoff_new_k2 %in% bc_genes_clean)/length(bc_genes_clean)*100
+  print("New (k = 2)")
+  print(new_k2)
+  
+  genes_selected_cutoffs[i,] <- c(cutoffs[i], old, new, new_k2)
+}
+# Interesting how we get more coverage no matter the cutoff although converges 
+# slightly at xtrmly low cutoffs. k = 2 shows slightly less coverage but at lower 
+# cutoffs coverage is almost the same (seems that lower k prioritizes important genes)
+ggplot() +
+  geom_line(data = genes_selected_cutoffs, aes(cutoffs, old), color = "black") +
+  geom_line(data = genes_selected_cutoffs, aes(cutoffs, new), color = "red") +
+  geom_line(data = genes_selected_cutoffs, aes(cutoffs, new_k2), color = "blue", alpha = 0.5) +
+  ylab("Cumulative Coverage (%)") +
+  xlab("mNDp Cutoff") +
+  ggtitle("Cumulative Coverage of disease-related genes by mNDp cutoffs", 
+          subtitle = "mND (k = 3) in black, GS-adjusted mND (k = 2) in blue, GS-adjusted mND (k = 3) in red")
+
+## ================================
+# Visualization of M & L (Looks like neighbors are not included in class M)
+## ================================
+
+## mND Graph
+library(visNetwork)
+genes_subset_mND <- class_res_old$gene_class %>% filter(!(L2 %in% c("NS", "I")))
+A_subset_mND <- A[rownames(A) %in% rownames(genes_subset_mND), 
+                  colnames(A) %in% rownames(genes_subset_mND)]
+graph_mND <- graph_from_adjacency_matrix(A_subset_mND) %>% 
+  set_vertex_attr("class", value = genes_subset_mND[,2])
+vis_mND <- toVisNetworkData(graph_mND)
+visNetwork(nodes = vis_mND$nodes, edges = vis_mND$edges) %>%
+  visIgraphLayout(layout = "layout_nicely") %>%
+  visOptions(nodesIdSelection = TRUE, selectedBy = "class") %>%
+  visNodes(color = vis_mND$nodes$class)
+
+## GS-adjusted mND graph
+genes_subset_adjusted_mND <- class_res_new$gene_class %>% filter(!(L2 %in% c("NS", "I")))
+A_subset_adjusted_mND <- A[rownames(A) %in% rownames(genes_subset_adjusted_mND), 
+                           colnames(A) %in% rownames(genes_subset_adjusted_mND)]
+graph_adjusted_mND <- graph_from_adjacency_matrix(A_subset_adjusted_mND) %>%
+  set_vertex_attr("class", value = genes_subset_adjusted_mND[,2])
+vis_adjusted_mND <- toVisNetworkData(graph_adjusted_mND)
+visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
+  visIgraphLayout(layout = "layout_nicely") %>%
+  visOptions(nodesIdSelection = TRUE, selectedBy = "class")
 
 ## ================================
 ## ================================
