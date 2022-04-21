@@ -307,8 +307,8 @@ Xs_new <- readRDS("Data/Xs_new.rds")
 
 #data(mND_score) #not same format as mND_score.rds (i think old format)
 mND_score <- readRDS("Data/mND_scores.rds")
-mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
-#mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
+#mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
+mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
 
 ##### mND Alone results #####
 
@@ -352,7 +352,7 @@ Hl_new <- list(l1 = rownames(X0[X0[,1]>0,]),
 )
 top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
 top_Nl_new
-class_res_new <- classification(mND_score_new_k2, X0_gs_adjusted, Hl_new, top = top_Nl_new)
+class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
 #class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
 
 #Classification of genes in every layer
@@ -361,7 +361,7 @@ head(class_res_new$gene_class)
 #Occurrence of (M; L; I; NS) for each gene across layers
 head(class_res_new$occ_labels)
 
-plot_results(mND_score_new_k2, class_res_new, W, n = 150, directory = "Results/mND_results_new_k2/")
+plot_results(mND_score_new, class_res_new, W, n = 150, directory = "Results/mND_results_new_k2/")
 #plot_results(mND_score_new, class_res_new, W, n = 150, directory = "Results/mND_results_new/")
 
 #Optimizing k (Mac only)
@@ -377,8 +377,9 @@ colnames(k_results_new) <- k_val
 
 ##### % Label change #####
 
-#Sanity check: L1 labels changed even more than layer 2... why?
-sum(class_res_new$gene_class[,2] != class_res$gene_class[,2])
+#Sanity check: L1 labels changed even more than layer 2
+class_res_new$gene_class <- class_res_new$gene_class[match(rownames(class_res$gene_class), rownames(class_res_new$gene_class)),]
+sum(class_res_new$gene_class[,1] != class_res$gene_class[,1])
 
 shift_sm <- table(mND = class_res$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
 
@@ -391,7 +392,7 @@ for(i in 1:nrow(shift_ge)){
 }
 results_ge_mND
 # Total selected mND genes (I, L, M)
-11796 - sum(shift_ge[4,])
+11796 - sum(shift_ge[4,]) #2297 k = 3
 
 # Percentages over GS_adjusted genes
 results_ge_GS_adjusted <- shift_ge
@@ -399,9 +400,12 @@ for(i in 1:ncol(shift_ge)){
   results_ge_GS_adjusted[,i] <- (shift_ge[,i]/sum(shift_ge[,i]))*100
 }
 results_ge_GS_adjusted
-# Total selected GS-adjusted mND genes (I, L, M) --> -205 genes
-11796 - sum(shift_ge[,4])
-11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,]))
+# Total selected GS-adjusted mND genes (I, L, M)
+11796 - sum(shift_ge[,4]) #2109 k = 3
+11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,])) # --> -188 genes k = 3, -205 k = 2
+# Difference in M
+sum(shift_ge[,3]) #GS-adjusted (314 with k = 3) --> +37 modules
+sum(shift_ge[3,]) #mND (277 with k = 3) 
 
 # Percent over all genes
 (shift_ge/11796)*100
@@ -460,8 +464,11 @@ mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
 new_genes = rownames(mND_score_new$mND)[which(mND_score_new$mND$mNDp < 0.05)]
 old_genes = rownames(mND_score$mND)[which(mND_score$mND$mNDp < 0.05)]
 
-## Ratio - we have a 7% change in the genes
-length(which(!(new_genes %in% old_genes)))/length(rownames(mND_score$mND))
+## Ratio - we have a 7% change in the genes 
+#   Ghadi: I think the way you calculated it means:
+# " 7.7% of the total genes were additionally significant with a 0.05 mNDp threshold "
+# Ratio would be length(new_genes)/length(old_genes) (diff lengths means hard to get a single percentage to reflect change)
+sum(!(new_genes %in% old_genes))/nrow(mND_score$mND)
 
 length(new_genes)
 length(old_genes)
@@ -561,18 +568,20 @@ for(i in seq(1,nrow(gs_results_all))){
 }
 
 ## We have 69 new modules - validate this
-length(which(new_module==1))
+# Ghadi: 72 with k = 2, 69 with k = 3
+sum(new_module==1)
 ## How many modules are in new but are not in old in old but they are in new
-length(which(class_res_old$gene_class[,2]=="M"))
-length(which(class_res_new$gene_class[,2]=="M"))
+sum(class_res_old$gene_class[,2]=="M")
+sum(class_res_new$gene_class[,2]=="M")
 
 ## Get md genes in new
 new_mdg = rownames(class_res_new$gene_class)[class_res_new$gene_class[,2] == "M"]
 old_mdg = rownames(class_res_old$gene_class)[class_res_old$gene_class[,2] == "M"]  
-length(which(new_mdg %in% old_mdg))
+sum(new_mdg %in% old_mdg)
 
 ## True - we have 69 genes as new modules previously not as modules
-length(which(!(new_mdg %in% old_mdg)))
+# Ghadi: 72
+sum(!(new_mdg %in% old_mdg))
 distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
 ## length(distinct_mdg)
 
