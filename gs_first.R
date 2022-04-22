@@ -614,14 +614,22 @@ ggplot() +
   geom_density(data = b, aes(x = y),
                fill = "#C70039", color = "black", alpha = 0.7)
 
-## Next: Significance Test between two vectors
-## The two vectors are:
+## Next: 
+## Significance Test between two vectors which are:
 ## 1. results_c_decay_score[dmdg_indices]
 ## 2. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
 ## ----------------------------------------------------------------------------
 
+vector1 <- results_c_decay_score[dmdg_indices]
+vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
 
-##-------------------------
+#Using var.test() in order to compare the variances
+#Running a two-sided variance test on both vectors with alpha = 5% (0.05) and null hypothesis (H0) -> variances are equal
+#ratio (default is 1) is the expected ration for H0, and the alternative hypothesis (H1) displays the other side
+
+var.test(x = vector1, y = vector2, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
+                           
+## ----------------------------------------------------------------------------
 #Sanity check:
 sum(class_res_new$gene_class[,1] != class_res_old$gene_class[,1])
 
