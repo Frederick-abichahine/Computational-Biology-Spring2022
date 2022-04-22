@@ -617,7 +617,7 @@ ggplot() +
                fill = "#C70039", color = "black", alpha = 0.7)
 
 ## Next: 
-## Significance Test between two vectors which are:
+## Significance Test between two vectors which are (distinct):
 ## 1. results_c_decay_score[dmdg_indices]
 ## 2. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
 ## ----------------------------------------------------------------------------
@@ -650,6 +650,31 @@ t.test(x = vector1, y = vector2, alternative = "two.sided", mu = 0, paired = FAL
 #we obtain a p-value = 5.896e-09 with a cut-off of 0.05 which is statistically significant
 #the 95% confidence interval is [29.82, 55.46]
 #the means of vector1 and vector2 are 168.97 and 126.33 respectively.
+
+## Next: 
+## Significance Test between the other two vectors which are (discarded):
+## 3. results_c_decay_score[discared_mdg_indices]
+## 4. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))]
+## ----------------------------------------------------------------------------
+
+vector3 <- results_c_decay_score[discared_mdg_indices]
+vector4 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))]
+
+#Now we perform the exact same steps as before and analyze the output for the discarded genes...
+
+## Comparing Variances:
+var.test(x = vector3, y = vector4, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
+
+#we obtain a p-value = 0.08254 with a cut-off of 0.05 which implies that it is not statistically significant
+#we obtain a ratio = 0.605 for x/y; This means that the variance of the discarded genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
+#the 95% confidence interval is [0.388, 1.070]
+
+## Comparing Means:
+t.test(x = vector3, y = vector4, alternative = "two.sided", mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95)
+
+#we obtain a p-value = 5.055e-06 with a cut-off of 0.05 which is statistically significant
+#the 95% confidence interval is [33.95, 74.00]
+#the means of vector3 and vector4 are 180.41 and 126.44 respectively.
                            
 ## ----------------------------------------------------------------------------
 #Sanity check:
