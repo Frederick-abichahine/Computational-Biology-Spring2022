@@ -530,6 +530,7 @@ results_c_decay_score = rep(0,nrow(ge_dist))
 new_module = rep(0,nrow(ge_dist))
 ## Now start the strategy:
 ## For every gene
+
 for(i in seq(1,nrow(gs_results_all))){
   ## Progress
   ## install.packages("svMisc")
@@ -585,6 +586,7 @@ sum(new_mdg %in% old_mdg)
 sum(!(old_mdg %in% new_mdg)) #32 (k=2) modules discarded by GS
 ## True - we have 69 genes as new modules previously not as modules
 # Ghadi: 72 with k = 2, 69 k = 3
+
 sum(!(new_mdg %in% old_mdg))
 distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
 discarded_mdg <- new_mdg[which(!(old_mdg %in% new_mdg))]
@@ -623,6 +625,7 @@ ggplot() +
 vector1 <- results_c_decay_score[dmdg_indices]
 vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
 
+## Comparing Variances:
 #Using var.test() in order to compare the variances
 #Running a two-sided variance test on both vectors with alpha = 5% (0.05) and null hypothesis (H0) -> variances are equal
 #ratio (default is 1) is the expected ratio for H0, and the alternative hypothesis (H1) displays the other side (default is two.sided)
@@ -630,8 +633,23 @@ vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_md
 var.test(x = vector1, y = vector2, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
 
 #we obtain a p-value = 0.002163 with a cut-off of 0.05 which is statistically significant
-#we obtain a ratio = 0.554 for x/y, this means that the variance of the distinctive genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
+#we obtain a ratio = 0.554 for x/y; This means that the variance of the distinctive genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
 #the 95% confidence interval is [0.406, 0.801]
+
+## Comparing Means:
+#Using t.test() in order to compare the means
+#mu is either the population's expected mean or the expected difference in the means of the two samples
+#mu = 0 as the null hypothesis.
+#paired indicates if the data is paired or not
+#var.equal indicates if both the samples are treated as equal or not equal w.r.t their variances
+#the above var.equal would be based on the var.test done before (in our case = FALSE)
+#since our data is unpaired => we perform the following comparison:
+
+t.test(x = vector1, y = vector2, alternative = "two.sided", mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95)
+
+#we obtain a p-value = 5.896e-09 with a cut-off of 0.05 which is statistically significant
+#the 95% confidence interval is [29.82, 55.46]
+#the means of vector1 and vector2 are 168.97 and 126.33 respectively.
                            
 ## ----------------------------------------------------------------------------
 #Sanity check:
