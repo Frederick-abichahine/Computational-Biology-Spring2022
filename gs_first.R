@@ -628,6 +628,10 @@ vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_md
 #ratio (default is 1) is the expected ratio for H0, and the alternative hypothesis (H1) displays the other side (default is two.sided)
 
 var.test(x = vector1, y = vector2, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
+
+#we obtain a p-value = 0.002163 with a cut-off of 0.05 which is statistically significant
+#we obtain a ratio = 0.554 for x/y, this means that the variance of the distinctive genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
+#the 95% confidence interval is [0.406, 0.801]
                            
 ## ----------------------------------------------------------------------------
 #Sanity check:
