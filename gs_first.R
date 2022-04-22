@@ -672,6 +672,7 @@ bc_genes_search2 <- AutoSeed("breast carcinoma")
 bc_genes <- Reduce(union, c(bc_genes_search$edgar,bc_genes_search$malacards, bc_genes_search$drugbank,
                             bc_genes_search2$edgar,bc_genes_search2$malacards, bc_genes_search2$drugbank))
 bc_genes_clean <- unique(vapply(bc_genes, function(x){return(unlist(strsplit(x, split='::', fixed=TRUE))[1])}, c("x")))
+bc_genes_clean <- bc_genes_clean[bc_genes_clean%in%rownames(X0)]
 # Matched distinct genes
 sum(distinct_mdg %in% bc_genes_clean)
 # Matched discarded genes
