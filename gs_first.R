@@ -594,13 +594,13 @@ discarded_mdg <- new_mdg[which(!(old_mdg %in% new_mdg))]
 
 ## Indices of distinct mdg
 dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
-discared_mdg_indices <- which(rownames(X0_gs_adjusted)%in%discarded_mdg)
+discarded_mdg_indices <- which(rownames(X0_gs_adjusted)%in%discarded_mdg)
 
 ## Mean Results
 mean(results_c_decay_score[dmdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 
-mean(results_c_decay_score[discared_mdg_indices])
+mean(results_c_decay_score[discarded_mdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))])
 
 ## Distinct Density Plots
@@ -608,12 +608,21 @@ ggplot(as.data.frame(as.matrix(results_c_decay_score[dmdg_indices])), aes(V1)) +
 ggplot(as.data.frame(as.matrix(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])), aes(V1)) + geom_density()
 
 ## Overlaying the Density Plots
+# Distinct
 a = data.frame(cumulative_decay_score = results_c_decay_score[dmdg_indices])
 b = data.frame(y = results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 ggplot() + 
   geom_density(data = a, aes(x = cumulative_decay_score), 
                fill = "#DAF7A6", color = "black", alpha = 0.7) + 
   geom_density(data = b, aes(x = y),
+               fill = "#C70039", color = "black", alpha = 0.7)
+#Discarded
+x = data.frame(cumulative_decay_score = results_c_decay_score[discarded_mdg_indices])
+y = data.frame(y = results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))])
+ggplot() + 
+  geom_density(data = x, aes(x = cumulative_decay_score), 
+               fill = "#DAF7A6", color = "black", alpha = 0.7) + 
+  geom_density(data = y, aes(x = y),
                fill = "#C70039", color = "black", alpha = 0.7)
 
 ## Next: 
@@ -633,7 +642,7 @@ vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_md
 var.test(x = vector1, y = vector2, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
 
 #we obtain a p-value = 0.002163 with a cut-off of 0.05 which is statistically significant
-#we obtain a ratio = 0.554 for x/y; This means that the variance of the distinctive genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
+#we obtain a ratio = 0.554 for x/y; This means that the variance of the distinctive genes that were selected as new modules was significantly lower than the old modules for the calculated cumulative decay score
 #the 95% confidence interval is [0.406, 0.801]
 
 ## Comparing Means:
@@ -653,11 +662,11 @@ t.test(x = vector1, y = vector2, alternative = "two.sided", mu = 0, paired = FAL
 
 ## Next: 
 ## Significance Test between the other two vectors which are (discarded):
-## 3. results_c_decay_score[discared_mdg_indices]
+## 3. results_c_decay_score[discarded_mdg_indices]
 ## 4. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))]
 ## ----------------------------------------------------------------------------
 
-vector3 <- results_c_decay_score[discared_mdg_indices]
+vector3 <- results_c_decay_score[discarded_mdg_indices]
 vector4 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))]
 
 #Now we perform the exact same steps as before and analyze the output for the discarded genes...
@@ -666,7 +675,7 @@ vector4 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_m
 var.test(x = vector3, y = vector4, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
 
 #we obtain a p-value = 0.08254 with a cut-off of 0.05 which implies that it is not statistically significant
-#we obtain a ratio = 0.605 for x/y; This means that the variance of the discarded genes that were selected as new modules were significantly lower than the old modules for the calculated cumulative decay score
+#we obtain a ratio = 0.605 for x/y; This means that the variance of the discarded genes that were selected as new modules was not significantly lower than the old modules for the calculated cumulative decay score
 #the 95% confidence interval is [0.388, 1.070]
 
 ## Comparing Means:
@@ -771,6 +780,122 @@ ggplot() +
   xlab("mNDp Cutoff") +
   ggtitle("Cumulative Coverage of disease-related genes by mNDp cutoffs", 
           subtitle = "mND (k = 3) in black, GS-adjusted mND (k = 2) in blue, GS-adjusted mND (k = 3) in red")
+
+## ================================
+# Enrichment Analysis
+## ================================
+
+require(KEGGREST)
+
+pathways.list <- keggList("pathway", "hsa") #Needs Internet connection
+pathway.codes <- sub("path:", "", names(pathways.list)) 
+genes.by.pathway <- sapply(pathway.codes,
+                           function(pwid){
+                             pw <- keggGet(pwid)
+                             if (is.null(pw[[1]]$GENE)) return(NA)
+                             pw2 <- pw[[1]]$GENE[c(FALSE,TRUE)] # may need to modify this to c(FALSE, TRUE) for other organisms
+                             pw2 <- unlist(lapply(strsplit(pw2, split = ";", fixed = T), function(x)x[1]))
+                             return(pw2)
+                           }
+)
+#saveRDS(genes.by.pathway, "Data/genes.by.pathway.rds")
+genes.by.pathway <- readRDS("Data/genes.by.pathway.rds")
+
+enrich <- function(mND_score, pathways.list, pathway.codes, genes.by.pathway)
+{
+  geneList <- mND_score$mND$mNDp
+  names(geneList) <- rownames(mND_score$mND)
+
+  # Wilcoxon test for each pathway
+  pVals.by.pathway <- t(sapply(names(genes.by.pathway),
+                             function(pathway) {
+                               pathway.genes <- genes.by.pathway[[pathway]]
+                               list.genes.in.pathway <- intersect(names(geneList), pathway.genes)
+                               list.genes.not.in.pathway <- setdiff(names(geneList), list.genes.in.pathway)
+                               scores.in.pathway <- geneList[list.genes.in.pathway]
+                               scores.not.in.pathway <- geneList[list.genes.not.in.pathway]
+                               if (length(scores.in.pathway) > 0){
+                                 p.value <- wilcox.test(scores.in.pathway, scores.not.in.pathway, alternative = "less")$p.value
+                               } else{
+                                 p.value <- NA
+                               }
+                               return(c(p.value = p.value, Annotated = length(list.genes.in.pathway)))
+                             }
+  ))
+  # Assemble output table
+  outdat <- data.frame(pathway.code = rownames(pVals.by.pathway))
+  outdat$pathway.name <- pathways.list[paste("path:",outdat$pathway.code, sep = "")]
+  outdat$p.value <- pVals.by.pathway[,"p.value"]
+  outdat$Annotated <- pVals.by.pathway[,"Annotated"]
+  return(outdat[order(outdat$p.value),])
+}
+
+enrichment_old <- enrich(mND_score, pathways.list, pathway.codes, genes.by.pathway)
+enrichment_new <- enrich(mND_score_new, pathways.list, pathway.codes, genes.by.pathway)
+#write.csv(enrichment_old, "Results/enrichment_old.csv")
+#enrichment_old <- read.csv("Results/genes.by.pathway.csv")
+#write.csv(enrichment_new, "Results/enrichment_new.csv")
+#enrichment_new <- read.csv("Results/genes.by.pathway.csv")
+
+comparative_enrich <- function(X0, mND_scores = list(), pathways.list, pathway.codes, genes.by.pathway){
+  result <- list()
+  for(i in 1:length(genes.by.pathway)){
+    pathway_result <- data.frame(matrix(nrow = length(seq (50, 500, 1)), 
+                                        ncol = length(mND_scores)+2))
+    colnames(pathway_result) <- append(names(mND_scores), c("DE_scores","cutoff"))
+    count <- 0
+    for(mND_score in mND_scores){
+      count <- count + 1
+      count2 <- 0
+      genes <- mND_score$mND %>% arrange(desc(mND))
+      control_genes <- sort(X0[,2], decreasing = TRUE) 
+      for(cutoff in seq (50, 500, 1)){
+        count2 <- count2 + 1
+        pathway_result[count2,count] <- sum(rownames(genes[1:cutoff,]) %in% genes.by.pathway[[i]])/length(genes.by.pathway[[i]])*100
+        pathway_result[count2,ncol(pathway_result)] <- cutoff
+        
+        if(count == 1){
+          pathway_result[count2,ncol(pathway_result)-1] <- sum(names(control_genes[1:cutoff]) %in% genes.by.pathway[[i]])/length(genes.by.pathway[[i]])*100
+        }
+      }
+    }
+    result[[pathways.list[[i]]]] <- pathway_result
+  }
+  return(result)
+}
+
+comparative_enrichment <- comparative_enrich(X0, list(mND_old_k3 = mND_score, mND_new_k3 = mND_score_new, mND_new_k2 = mND_score_new_k2), pathways.list, pathway.codes, genes.by.pathway)
+
+bc_pathways <- c("Breast cancer - Homo sapiens (human)", 
+                 "Epstein-Barr virus infection - Homo sapiens (human)", 
+                 "Pathways in cancer - Homo sapiens (human)", 
+                 "Viral carcinogenesis - Homo sapiens (human)")
+other_pathways <- c("Cell cycle - Homo sapiens (human)",
+                    "FoxO signaling pathway - Homo sapiens (human)",
+                    "Hippo signaling pathway - Homo sapiens (human)",
+                    "Oocyte meiosis - Homo sapiens (human)",
+                    "p53 signaling pathway - Homo sapiens (human)",
+                    "PI3K-Akt signaling pathway - Homo sapiens (human)",
+                    "Progesterone-mediated oocyte maturation - Homo sapiens (human)",
+                    "Proteasome - Homo sapiens (human)",
+                    "Rap1 signaling pathway - Homo sapiens (human)",
+                    "Ras signaling pathway - Homo sapiens (human)",
+                    "Sphingolipid signaling pathway - Homo sapiens (human)",
+                    "TGF-beta signaling pathway - Homo sapiens (human)")
+
+for(pathway in append(bc_pathways, other_pathways)){
+
+  plot <- ggplot(data = comparative_enrichment[[pathway]]) +
+            geom_line(aes(cutoff, mND_old_k3), color = "black") +
+            geom_line(aes(cutoff, mND_new_k3), color = "red") +
+            geom_line(aes(cutoff, mND_new_k2), color = "blue") +
+            geom_line(aes(cutoff, DE_scores), color = "magenta") +
+            ylab("Cumulative Coverage (%)") +
+            xlab("Cutoff of sorted gene list") +
+            ggtitle(pathway) 
+              #subtitle = "Black: mND (k = 3), Blue: GS-adjusted mND (k = 2), Red: GS-adjusted mND (k = 3), Magenta: original DE scores")
+  print(plot)
+}
 
 ## ================================
 # Visualization of M & L (Looks like neighbors are not included in class M)
