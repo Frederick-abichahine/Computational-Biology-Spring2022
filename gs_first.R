@@ -832,10 +832,10 @@ enrich <- function(mND_score, pathways.list, pathway.codes, genes.by.pathway)
 
 enrichment_old <- enrich(mND_score, pathways.list, pathway.codes, genes.by.pathway)
 enrichment_new <- enrich(mND_score_new, pathways.list, pathway.codes, genes.by.pathway)
-#write.csv(enrichment_old, "Results/enrichment_old.csv")
-#enrichment_old <- read.csv("Results/genes.by.pathway.csv")
-#write.csv(enrichment_new, "Results/enrichment_new.csv")
-#enrichment_new <- read.csv("Results/genes.by.pathway.csv")
+#write.csv(enrichment_old, "Results/Enrichment/enrichment_old.csv")
+#enrichment_old <- read.csv("Results/Enrichment/enrichment_old.csv")
+#write.csv(enrichment_new, "Results/Enrichment/enrichment_new.csv")
+#enrichment_new <- read.csv("Results/Enrichment/enrichment_new.csv")
 
 comparative_enrich <- function(X0, mND_scores = list(), pathways.list, pathway.codes, genes.by.pathway){
   result <- list()
