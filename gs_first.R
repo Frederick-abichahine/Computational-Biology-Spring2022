@@ -995,15 +995,24 @@ omegas <- connectivity_old[1:996,] %>%
          omega_control = connectivity_control$omega)
 
 ggplot(omegas) + 
-  geom_boxplot(aes("mND", log(omega_old)), color = "black") +
+  geom_boxplot(aes("mND (k=3)", log(omega_old)), color = "black") +
   geom_boxplot(aes("GS-adjusted (k=3)", log(omega_new)), color = "red") +
   geom_boxplot(aes("GS-adjusted (k=2)", log(omega_new_k2)), color = "blue") +
-  geom_boxplot(aes("DE scores (k=3)", log(omega_control)), color = "magenta") +
+  geom_boxplot(aes("original DE", log(omega_control)), color = "magenta") +
   ylab("log(Omega)") +
   xlab("Score") +
   ggtitle("Distribution of enriched connectivity score across cutoffs sorted of genes", 
-          subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE scores")
+          subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE")
 
+ggplot() +
+  geom_boxplot(data = mND_score$mND, aes("mND (k=3)", log(mND)), color = "black") +
+  geom_boxplot(data = mND_score_new$mND, aes("GS-adjusted (k=3)", log(mND)), color = "red") +
+  geom_boxplot(data = mND_score_new_k2$mND, aes("GS-adjusted (k=2)", log(mND)), color = "blue") +
+  geom_boxplot(data = data.frame(X0), aes("original DE", log(L2)), color = "magenta") +
+  ylab("log(Value)") +
+  xlab("Score") +
+  ggtitle("Distribution of scores", 
+          subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE")
 
 ## ================================
 # Visualization of M & L (Looks like neighbors are not included in class M)
