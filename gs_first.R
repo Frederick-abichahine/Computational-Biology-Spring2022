@@ -898,6 +898,114 @@ for(pathway in append(bc_pathways, other_pathways)){
 }
 
 ## ================================
+# Assessing Connectivity of High Scoring Genes
+## ================================
+
+assess_connectivity <- function(A, mND_score, n){
+  
+  objective <- function(S1, A){
+    return(t(as.matrix(S1))%*%as.matrix(A)%*%as.matrix(S1))
+  }
+  
+  permute_A <- function(A, n){
+    result <- list()
+    for(i in 1:n){
+      permuted_A <- A[sample(nrow(A)),]
+      rownames(permuted_A) <- rownames(A)
+      result[[i]] <- permuted_A
+    }
+    return(result)
+  }
+  
+  print("Permuting Vertices...")
+  permuted_As <- permute_A(A, n)
+  genes <- mND_score %>% arrange(desc(mND))
+  results <- data.frame(matrix(ncol = 3, nrow = length(5:nrow(mND_score))))
+  colnames(results) <- c("cutoff", "omega", "p_omega")
+  count <- 0
+  for(cutoff in 5:nrow(mND_score)){
+    print(paste("Cutoff:", cutoff))
+    count <- count + 1
+    results[count,1] <- cutoff
+    top_genes <- rownames(genes[1:cutoff,])
+    sub_A <- A[rownames(A) %in% top_genes, colnames(A) %in% top_genes]
+    
+    print("Calculating Observed Omega...")
+    observed_omega <- objective(genes[1:cutoff,]$mND, sub_A)
+    results[count,2] <- observed_omega
+    
+    print("Calculating Permutated Omegas...")
+    null_omega <- vector()
+    for(i in 1:length(permuted_As)){
+      sub_permuted_A <- permuted_As[[i]][rownames(permuted_As[[i]]) %in% top_genes, colnames(permuted_As[[i]]) %in% top_genes]
+      null_omega[i] <- objective(genes[1:cutoff,]$mND, sub_permuted_A)
+    }
+    print("Assessing Significance...")
+    p_omega <- sum(as.vector(null_omega) >= as.vector(observed_omega))/length(null_omega)
+    results[count,3] <- p_omega
+    print(paste("Done with cutoff", cutoff))
+  }
+  return(results)
+  print("Success!")
+}
+
+ordered_scores_old <- (mND_score$mND %>% arrange(desc(mND)))[1:1000,]
+sub_A_old <- A[rownames(A) %in% rownames(ordered_scores_old), colnames(A) %in% rownames(ordered_scores_old)]
+
+connectivity_old <- assess_connectivity(sub_A_old, ordered_scores_old, 300)
+#write.csv(connectivity_old, "Results/Connectivity/connectivity_old.csv")1
+#conenctivity_old <- read.csv("Results/Connectivity/connectivity_old.csv")
+
+ordered_scores_new <- (mND_score_new$mND %>% arrange(desc(mND)))[1:1000,]
+sub_A_new <- A[rownames(A) %in% rownames(ordered_scores_new), colnames(A) %in% rownames(ordered_scores_new)]
+
+connectivity_new <- assess_connectivity(sub_A_new, ordered_scores_new, 300)
+#write.csv(connectivity_new, "Results/Connectivity/connectivity_new.csv")
+#conenctivity_new <- read.csv("Results/Connectivity/connectivity_new.csv")
+
+ordered_scores_new_k2 <- (mND_score_new_k2$mND %>% arrange(desc(mND)))[1:1000,]
+sub_A_new_k2 <- A[rownames(A) %in% rownames(ordered_scores_new_k2), colnames(A) %in% rownames(ordered_scores_new_k2)]
+
+connectivity_new_k2 <- assess_connectivity(sub_A_new_k2, ordered_scores_new_k2, 300)
+#write.csv(connectivity_new_k2, "Results/Connectivity/connectivity_new_k2.csv")
+#conenctivity_new_k2 <- read.csv("Results/Connectivity/connectivity_new_k2.csv")
+
+ordered_scores_control <- (as.data.frame(X0) %>% mutate(mND = L2) %>% arrange(desc(mND)))[1:1000,]
+sub_A_control <- A[rownames(A) %in% rownames(ordered_scores_control), colnames(A) %in% rownames(ordered_scores_control)]
+
+connectivity_control <- assess_connectivity(sub_A_control, ordered_scores_control, 300)
+#write.csv(connectivity_control, "Results/Connectivity/connectivity_control.csv")
+#conenctivity_control <- read.csv("Results/Connectivity/connectivity_control.csv")
+
+ggplot() + 
+  geom_line(data = connectivity_old[1:150,], aes(cutoff, p_omega), color = "black") +
+  geom_line(data = connectivity_new[1:150,], aes(cutoff, p_omega), color = "red") +
+  geom_line(data = connectivity_new_k2[1:150,], aes(cutoff, p_omega), color = "blue") +
+  geom_line(data = connectivity_control[1:150,], aes(cutoff, p_omega), color = "magenta") +
+  ylab("Omega p-value") +
+  xlab("Cutoff of sorted gene list") +
+  ggtitle("Significance of enriched connectivity across cutoffs of sorted gene list", 
+    subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE scores")
+
+omegas <- connectivity_old[1:996,] %>% 
+  mutate(omega_old = omega) %>% 
+  select(omega_old) %>%
+  mutate(omega_new = connectivity_new$omega, 
+         omega_new_k2 = connectivity_new_k2$omega,
+         omega_control = connectivity_control$omega)
+
+ggplot(omegas) + 
+  geom_boxplot(aes("mND", log(omega_old)), color = "black") +
+  geom_boxplot(aes("GS-adjusted (k=3)", log(omega_new)), color = "red") +
+  geom_boxplot(aes("GS-adjusted (k=2)", log(omega_new_k2)), color = "blue") +
+  geom_boxplot(aes("DE scores (k=3)", log(omega_control)), color = "magenta") +
+  ylab("log(Omega)") +
+  xlab("Score") +
+  ggtitle("Distribution of enriched connectivity score across cutoffs sorted of genes", 
+          subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE scores")
+
+
+## ================================
 # Visualization of M & L (Looks like neighbors are not included in class M)
 ## ================================
 
