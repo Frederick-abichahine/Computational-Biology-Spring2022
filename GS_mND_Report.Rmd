@@ -889,6 +889,41 @@ ggplot() +
                fill = "#DAF7A6", color = "black", alpha = 0.7) + 
   geom_density(data = y, aes(x = y),
                fill = "#C70039", color = "black", alpha = 0.7)
+## ----------------------------------------------------------------------------
+
+vector1 <- results_c_decay_score[dmdg_indices]
+vector2 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
+
+## Comparing Variances:
+#Using var.test() in order to compare the variances
+#Running a two-sided variance test on both vectors with alpha = 5% (0.05) and null hypothesis (H0) -> variances are equal
+#ratio (default is 1) is the expected ratio for H0, and the alternative hypothesis (H1) displays the other side (default is two.sided)
+
+var.test(x = vector1, y = vector2, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
+
+
+## Comparing Means:
+#Using t.test() in order to compare the means
+#mu is either the population's expected mean or the expected difference in the means of the two samples
+#mu = 0 as the null hypothesis.
+#paired indicates if the data is paired or not
+#var.equal indicates if both the samples are treated as equal or not equal w.r.t their variances
+#the above var.equal would be based on the var.test done before (in our case = FALSE)
+#since our data is unpaired => we perform the following comparison:
+
+t.test(x = vector1, y = vector2, alternative = "two.sided", mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95)
+## ----------------------------------------------------------------------------
+
+vector3 <- results_c_decay_score[discarded_mdg_indices]
+vector4 <- results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))]
+
+#Now we perform the exact same steps as before and analyze the output for the discarded genes...
+
+## Comparing Variances:
+var.test(x = vector3, y = vector4, ratio = 1, alternative = c("two.sided", "less", "greater"), conf.level = 0.95)
+
+## Comparing Means:
+t.test(x = vector3, y = vector4, alternative = "two.sided", mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95)
 ```
 
 ## [6] ~ Coverage & Enrichment {.tabset .tabset-fade .tabset-pills}
@@ -970,7 +1005,7 @@ ggplot() +
           subtitle = "mND (k = 3) in black, GS-adjusted mND (k = 2) in blue, GS-adjusted mND (k = 3) in red")
 ```
 
-### [6.b] Encrichment
+### [6.b] Enrichment
 ```{r}
 ## ===========================================================================
 ## Enrichment Analysis
