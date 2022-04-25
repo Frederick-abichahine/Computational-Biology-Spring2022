@@ -46,6 +46,7 @@ library(igraph)
 library(pcaPP)
 library(SciViews)
 library(tidyverse)
+library(lubridate)
 #library(rsample)
 
 ## ==========================================================================
@@ -94,7 +95,8 @@ mND_score <- signif_assess(mND_score)
 ge <- X0[,2]
 plot(sort(ge))
 ggplot(data.frame(ge = ge), aes(ge)) + geom_density()
-ge_filtered <- ge[ge >= 10] # gives 438 genes, roughly 2 hours to run GeneSurrounder
+## Gives 438 genes, roughly 2 hours to run GeneSurrounder
+ge_filtered <- ge[ge >= 10] 
 
 int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
 ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkName = "int_network")
@@ -106,8 +108,6 @@ diam <- diameter(int_network)
 genes.assayedETnetwork <- intersect(rownames(ge_dist), rownames(ge_cor))
 
 ## Resampling
-#ge_boot <- bootstraps(as.vector(ge), times = 1000)
-
 ge_resampled <- data.frame(matrix(ncol = length(ge_filtered), nrow = 1000))
 colnames(ge_resampled) <- rownames(data.frame(ge_filtered))
 set.seed(123)
@@ -128,7 +128,9 @@ for(i in 1:length(ge_filtered)){
                geneStats.observed = ge_filtered,
                perm.geneStats.matrix = as.matrix(ge_resampled), 
                genes.assayedETnetwork = genes.assayedETnetwork, 
-               diameter = diam, # diameter >= 8 # diameter < 8 gives an error due to geneid.d line 376 of GeneSurrounder.R
+               #> diameter >= 8 # diameter < 8 gives an
+               #> error due to geneid.d line 376 of GeneSurrounder.R
+               diameter = diam, 
                num.Sphere.resamples = 1000, 
                gene.id = rownames(data.frame(ge_filtered))[i] 
                )
@@ -220,22 +222,34 @@ sum(gs_NDp_filtered_results$time)/60
 ### These results can then be used to adjust top k neighbors in mND
 
 ## ==========================================================================
-## mND on GeneSurrounder
+##  mND on GeneSurrounder
 ## ==========================================================================
+##  Strategy:
+##  1. Run GeneSurrounder to obtain p-decay, p-sphere, p-fisher
+##  2. Use one or more of the above to adjust the values of some layer.
+##  3. Run mND on the new adjusted layers.
+##  4. Save the Results & Compare with the previous results.
 
-#### Step 1: GeneSurrounder ####
+##  Step 1: GeneSurrounder              ##
+##--------------------------------------##
 
+#> Optional: Filter non zero values
 #X0_new <- data.frame(X0) %>%
 #  mutate(sum = L1 + L2) %>%
 #  filter(sum > 0) %>%
 #  select(-sum)
 
+#> Load in the Data
 data(X0)
+data(A)
+
+#> Get a Correlation Matrix (Required to run GS)
 ge <- X0[,2]
-
 ge_no_0 <- data.frame(ge[ge > 0])
-ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0", useMethod = "everything")
+ge_cor <- calcCorMatrix(ge_no_0, corMethod = "pearson", exprName = "ge_no_0",
+                        useMethod = "everything")
 
+#> Get a resampled GE matrix (Required to run GS)
 ge_resampled <- data.frame(matrix(ncol = length(ge[ge > 0]), nrow = 1000))
 colnames(ge_resampled) <- names(ge[ge > 0])
 set.seed(123)
@@ -243,6 +257,19 @@ for(i in 1:1000){
   ge_resampled[i,] <- sample(ge[ge > 0], length(ge[ge > 0]), replace = TRUE)
 }
 
+#> Get the interaction network & distance matrix (Required to run GS)
+int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
+ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all",
+                                 networkName = "int_network")
+
+#> Run Gene Surrounder
+#> Takes as parameters:
+#> 1. Genes distance matrix
+#> 2. GE correlation matrix
+#> 3. GE layer with ge > 0
+#> 4. Resampled GE matrix
+#> 5. Gene IDs of > 0 GE
+#> 6. Output file name
 gs_results_all <- run_geneSurrounder(distance.matrix = ge_dist, 
                                     cor.matrix = ge_cor, 
                                     geneStats.observed = ge[ge > 0],
@@ -254,24 +281,39 @@ gs_results_all <- run_geneSurrounder(distance.matrix = ge_dist,
                                     file_name = "gs_results_all.csv"
                                    ) # Took too much time, ran in chunks
 
-#write.csv(gs_results_all, "Data/gs_results_all.csv")
+#> Save Results to CSV
+## write.csv(gs_results_all, "Data/gs_results_all.csv")
 
-#### Step 2: mND on GeneSurrounder - Adjusted scores ####
-library(lubridate)
+##---------------------------------------------------------------##
+##  Step 2: mND on GeneSurrounder - Adjusted scores              ##
+##---------------------------------------------------------------##
+
+## 1. Read the results of Gene Surrounder
 gs_results_all <- read.csv("Data/gs_results_all.csv") %>% mutate(time = duration(time)) %>% select(-X)
 rownames(gs_results_all) <- gs_results_all$gene.id
 
+## 2. Adjust the Scores of one Layer
+##    Adjusted score = -log10(p.Decay)
 X0_gs_adjusted <- data.frame(X0) %>%
   rownames_to_column('rn')  %>%
   mutate(L2 = if_else(rn %in% gs_results_all$gene.id, -log10(gs_results_all[rn,]$p.Decay)*L2, L2)) %>%
   column_to_rownames('rn')
-
 X0_gs_adjusted <- as.matrix(X0_gs_adjusted)
-#saveRDS(X0_gs_adjusted, "Data/X0_gs_adjusted.rds")
 
+#> Save Results to RDS
+## saveRDS(X0_gs_adjusted, "Data/X0_gs_adjusted.rds")
+#> Load the Results 
+data(X0)
+X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
+
+## 3. Visualize the difference between
+##    the two layers: old & adjusted
+##    Plot Results with Density plot
 ggplot(data.frame(X0), aes(L2)) + geom_density()
 ggplot(data.frame(X0_gs_adjusted), aes(L2)) + geom_density()
 
+## 4. Run mND on Adjusted Values
+##    take different k-values to run mND
 data(A)
 W <- normalize_adj_mat(A)
 ind_adj <- neighbour_index(W)
@@ -287,34 +329,42 @@ mND_score_new_k2 <- mND(Xs_new, ind_adj, k=2, cores = 2)
 mND_score_new_k2 <- signif_assess(mND_score_new_k2)
 #mND_score_new <- signif_assess(mND_score_new)
 
-#saveRDS(mND_score_new_k2, "Data/mND_gs_adjusted_scores_k2.rds")
+## 5. Save Results in RDS
 #saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
-
+#saveRDS(mND_score_new_k2, "Data/mND_gs_adjusted_scores_k2.rds")
 
 ## ==========================================================================
-## Results
+## Getting the Results
 ## ==========================================================================
 
-#Load Data
+## Load Data
+#> Adjacency Matrix
 data(A)
+
+## Normalized AM
 W <- normalize_adj_mat(A)
 ind_adj <- neighbour_index(W)
 
+## Matrices with Original Values
 data(X0)
 data(Xs)
+
+## Matrices with Adjusted Values
 X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
 Xs_new <- readRDS("Data/Xs_new.rds")
 
-#data(mND_score) #not same format as mND_score.rds (i think old format)
+## mND Scores Results 
 mND_score <- readRDS("Data/mND_scores.rds")
 #mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
 mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
 
 ##### mND Alone results #####
 
-#H1: genes with a mutation frequency greater than zero;
-#H2: top 1200 differentially expressed genes (FDR < 10^-7).
-#Further, we set the cardinalities of gene sets N1 and N2, containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
+# H1: genes with a mutation frequency greater than zero;
+# H2: top 1200 differentially expressed genes (FDR < 10^-7).
+# Further, we set the cardinalities of gene sets N1 and N2,
+#   containing the genes with the highest scoring neighborhoods,
+#   as |H1|=|N1| and |H2|=|N2|
 Hl <- list(l1 = rownames(X0[X0[,1]>0,]), 
            l2 = names(X0[order(X0[,2], decreasing = T),2][1:1200])
 )
@@ -323,94 +373,114 @@ top_Nl
 
 class_res <- classification(mND_score, X0, Hl, top = top_Nl)
 
-#Classification of genes in every layer
+## Classification of genes in every layer
 head(class_res$gene_class)
 
-#Occurrence of (M; L; I; NS) for each gene across layers
+## Occurrence of (M; L; I; NS)
+##  for each gene across layers
 head(class_res$occ_labels)
 
+## Plot the results of mND Score
 plot_results(mND_score, class_res, W, n = 150, directory = "Results/mND_results/")
 
-#Optimizing k (Mac only)
+## Optimizing k (Mac only)
 k_val <- seq(1,6,1)
 k_results <- optimize_k(Xs, X0, k_val, ind_adj, W, top = 200, cores = 2)
 k_results <- data.frame(k_results)
 colnames(k_results) <- k_val
-#write.csv(k_results, "Data/k_results.csv")
-# can also be loaded through data(k_results) but is a list not data.frame
+## Save Results to CSV
+#> can also be loaded through data(k_results) but is a list not data.frame
+# write.csv(k_results, "Data/k_results.csv")
 
-##### GS-Adjusted mND results #####
-
-
+## New Results -- GS Adjusted mND Results ##
+## -------------------------------------- ##
 #H1: genes with a mutation frequency greater than zero;
 #H2: top 1200 differentially expressed genes (FDR < 10^-7).
 #Further, we set the cardinalities of gene sets N1 and N2,
-#containing the genes with the highest scoring neighborhoods, as |H1|=|N1| and |H2|=|N2|
-
+# containing the genes with the highest scoring neighborhoods,
+# as |H1|=|N1| and |H2|=|N2|
 Hl_new <- list(l1 = rownames(X0[X0[,1]>0,]), 
            l2 = names(X0_gs_adjusted[order(X0_gs_adjusted[,2], decreasing = T),2][1:1200])
 )
 top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
 top_Nl_new
 class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
-#class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
 
-#Classification of genes in every layer
+## Classification of genes in every layer
 head(class_res_new$gene_class)
 
-#Occurrence of (M; L; I; NS) for each gene across layers
+## Occurrence of (M; L; I; NS) for each gene across layers
 head(class_res_new$occ_labels)
 
+## Plotting new mND Scores Results
 plot_results(mND_score_new, class_res_new, W, n = 150, directory = "Results/mND_results_new_k2/")
 #plot_results(mND_score_new, class_res_new, W, n = 150, directory = "Results/mND_results_new/")
 
-#Optimizing k (Mac only)
+## Optimizing k (Mac only)
 k_results_new <- optimize_k(Xs_new, X0_gs_adjusted, k_val, ind_adj, W, top = 200, cores = 2)
 k_results_new <- data.frame(k_results_new)
 colnames(k_results_new) <- k_val
+## Saving Results
 #write.csv(k_results_new, "Data/k_results_new.csv")
-#k = 2 seems like a better choice in this case
+#> k = 2 seems like a better choice in this case
 
 ## ==========================================================================
-## Analysis - Ghadi
+## Analysis of Results - Ghadi
+## A. Classification Change
+## B. Network Visualization
 ## ==========================================================================
 
-##### % Label change #####
+## A. Discussing Classification Change
+##    % Label Change
+## -----------------------------------
 
-#Sanity check:
+## Sanity check:
+#> Get new Classes - new Results
 class_res_new$gene_class <- class_res_new$gene_class[match(rownames(class_res$gene_class), rownames(class_res_new$gene_class)),]
+
+#> Results for Somatic Mutations Layer
 sum(class_res_new$gene_class[,1] != class_res$gene_class[,1])
-
 shift_sm <- table(mND = class_res$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
-
+#> Results for Gene Expression Adjusted Layer
+sum(class_res_new$gene_class[,2] != class_res$gene_class[,2])
 shift_ge <- table(mND = class_res$gene_class[,2], GS_adjusted_mND = class_res_new$gene_class[,2])
 
-# Percentages over mND genes
+## Confusion Matrix Percentages over original mND genes
 results_ge_mND <- shift_ge
 for(i in 1:nrow(shift_ge)){
   results_ge_mND[i,] <- (shift_ge[i,]/sum(shift_ge[i,]))*100
 }
 results_ge_mND
-# Total selected mND genes (I, L, M)
+## Total selected mND genes (I, L, M)
 11796 - sum(shift_ge[4,]) #2297 k = 3
 
-# Percentages over GS_adjusted genes
+## Percentages over GS_adjusted genes
 results_ge_GS_adjusted <- shift_ge
 for(i in 1:ncol(shift_ge)){
   results_ge_GS_adjusted[,i] <- (shift_ge[,i]/sum(shift_ge[,i]))*100
 }
 results_ge_GS_adjusted
-# Total selected GS-adjusted mND genes (I, L, M)
-11796 - sum(shift_ge[,4]) #2109 k = 3
-11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,])) # --> -188 genes k = 3, -205 k = 2
-# Difference in M
-sum(shift_ge[,3]) #GS-adjusted (314 with k = 3) --> +37 modules
-sum(shift_ge[3,]) #mND (277 with k = 3) 
+## Total selected GS-adjusted mND genes (I, L, M)
+#> 2109 k = 3
+11796 - sum(shift_ge[,4]) 
 
-# Percent over all genes
+#> Difference btween k=3 and k=2
+#> -188 genes k = 3, -205 k = 2
+11796 - sum(shift_ge[,4]) - (11796 - sum(shift_ge[4,])) 
+
+## Difference in M
+## GS-adjusted (314 with k = 3) 
+## --> +37 modules
+sum(shift_ge[,3])
+
+## Percent over all genes
 (shift_ge/11796)*100
 
-##### Network Visualization #####
+#> Analysis of previous results:
+#> 
+## ---------------------------------------------------------------
+##  B. Network Visualization             
+## ------------------------------------
 library(visNetwork)
 library(RCy3)
 ls("package:igraph", pattern = "^layout_.")
@@ -426,11 +496,12 @@ visNetwork(nodes = vis_mND$nodes, edges = vis_mND$edges) %>%
   visIgraphLayout(layout = "layout_") %>%
   visOptions(nodesIdSelection = TRUE, selectedBy = "class") %>%
   visNodes(color = vis_mND$nodes$class)
-#cytoscapePing()
-#createNetworkFromIgraph(graph_mND,new.title='mND')
-#cytoscape was taking time idk
 
-#1 = Isolated, 2 = Linker, 3 = Module
+#> Trying Cytoscape: Took a loong time
+# cytoscapePing()
+# createNetworkFromIgraph(graph_mND,new.title='mND')
+
+## 1 = Isolated, 2 = Linker, 3 = Module
 ## GS-adjusted mND graph
 genes_subset_adjusted_mND <- class_res_new$gene_class %>% filter(L2 != "NS")
 A_subset_adjusted_mND <- A[rownames(A) %in% rownames(genes_subset_adjusted_mND), 
@@ -442,39 +513,52 @@ visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
   visIgraphLayout(layout = "layout_in_circle") %>%
   visOptions(nodesIdSelection = TRUE, selectedBy = "class")
 
-## ================================
-## Running Analysis - Bilal
-## ================================
-#saveRDS(mND_score_new, "Data/mND_gs_adjusted_scores.rds")
+## ==========================================================================
+## Analysis of Results - Bilal
+## A. Checking Old vs New Genes Count
+## B. Introducing Cumulative Decay Score
+## ==========================================================================
+
+## A. Checking Old vs New Genes Count
+## ----------------------------------
+## Load Data
+#> Adjacency Matrix
 data(A)
+
+## Normalized AM
 W <- normalize_adj_mat(A)
 ind_adj <- neighbour_index(W)
 
+## Matrices with Original Values
 data(X0)
 data(Xs)
+
+## Matrices with Adjusted Values
 X0_gs_adjusted <- readRDS("Data/X0_gs_adjusted.rds")
 Xs_new <- readRDS("Data/Xs_new.rds")
 
-#data(mND_score) #not same format as mND_score.rds (i think old format)
+## mND Scores Results 
 mND_score <- readRDS("Data/mND_scores.rds")
 mND_score_new_k2 <- readRDS("Data/mND_gs_adjusted_scores_k2.rds")
 mND_score_new <- readRDS("Data/mND_gs_adjusted_scores.rds")
 
-#get new and old genes
+## Get new and old genes
 new_genes = rownames(mND_score_new$mND)[which(mND_score_new$mND$mNDp < 0.05)]
+length(new_genes)
 old_genes = rownames(mND_score$mND)[which(mND_score$mND$mNDp < 0.05)]
-
+length(old_genes)
 ## Ratio - we have a 7% change in the genes 
-#   Ghadi: I think the way you calculated it means:
-# " 7.7% of the total genes were additionally significant with a 0.05 mNDp threshold "
-# Ratio would be length(new_genes)/length(old_genes) (diff lengths means hard to get a single percentage to reflect change)
+## Ghadi: " 7.7% of the total genes were additionally
+##          significant with a 0.05 mNDp threshold "
 sum(!(new_genes %in% old_genes))/nrow(mND_score$mND)
 
-length(new_genes)
-length(old_genes)
+# Ratio would be length(new_genes)/length(old_genes)
+# (diff lengths means hard to get a single percentage to reflect change)
+(length(new_genes)-length(old_genes))/length(new_genes)
 
-## ================================
-## Old
+## B. Introducing Cumulative Decay Score
+## -------------------------------------
+## Load Classificaiton of Old vs New Genes
 data(X0)
 Hl_old <- list(l1 = rownames(X0[X0[,1]>0,]), 
            l2 = names(X0[order(X0[,2], decreasing = T),2][1:1200])
@@ -485,7 +569,6 @@ class_res_old <- classification(mND_score, X0, Hl_old, top = top_Nl_old)
 head(class_res_old$gene_class)
 
 
-## New 
 Hl_new <- list(l1 = rownames(X0_gs_adjusted[X0_gs_adjusted[,1]>0,]), 
                l2 = names(X0_gs_adjusted[order(X0_gs_adjusted[,2], decreasing = T),2][1:1200])
 )
@@ -493,10 +576,8 @@ top_Nl_new <- unlist(lapply(Hl_new, function(x) length(x)))
 top_Nl_new
 class_res_new <- classification(mND_score_new, X0_gs_adjusted, Hl_new, top = top_Nl_new)
 #class_res_new <- classification(mND_score_new_k2, X0_gs_adjusted, Hl_new, top = top_Nl_new)
-
-#Classification of genes in every layer
 head(class_res_new$gene_class)
-##-------------------------
+
 ## After obtaining the classification of each gene
 ## we wish to check the cumulative_decay_score on target genes
 ## Target Genes are new genes that are obtained
@@ -510,33 +591,27 @@ head(class_res_new$gene_class)
 ## Now, this Measure could be taken as GE
 ## or the adjusted -log_10(p-value)
 ##-------------------------------------------------
-## First lets convert the Adjacency Matrix to Distance Matrix
+## 1. First lets convert the Adjacency Matrix to Distance Matrix
 ## install.packages("netmeta")
 library(netmeta)
-
 int_network <- graph_from_adjacency_matrix(A, mode = "undirected")
 ge_dist <- calcAllPairsDistances(int_network, directionPaths = "all", networkName = "int_network")
-## Second, lets get the decay effect of each gene from gs_results_all
+## 2. Second, lets get the decay effect of each gene from gs_results_all
 gs_results_all <- read.csv("Data/gs_results_all.csv")
-## Get List of all old nodes classification
+## 3. Get List of all old nodes classification
 old_class = class_res_old$gene_class[,2]
-## Get list of all new nodes classification
+## 4. Get list of all new nodes classification
 new_class = class_res_new$gene_class[,2]
-## Remember - adjusted scores of genes
+## 5. Remember - adjusted scores of genes
 X0_gs_adjusted
 
-## initialize empty vector
+## 6. initialize empty vector
 results_c_decay_score = rep(0,nrow(ge_dist))
 new_module = rep(0,nrow(ge_dist))
-## Now start the strategy:
-## For every gene
 
+## 7. Get Cumulative Decay Score for each Gene
 for(i in seq(1,nrow(gs_results_all))){
-  ## Progress
-  ## install.packages("svMisc")
-  ## library(svMisc)
-  ##progress(i)
-  ## ----
+  ## Gene Attributes
   gene = gs_results_all[i,]
   g_id = gene$gene.id
   g_rd = gene$radius
@@ -545,10 +620,12 @@ for(i in seq(1,nrow(gs_results_all))){
   ## Get the measure of the module node
   ## we choose measyre as -log_10_pvalue
   ## Other choice is original GE
-  #measure = X0_gs_adjusted[i,2]
+  ## measure = X0_gs_adjusted[i,2]
   measure <- -log10(gene$p.Decay)
-  ##print(measure)
+  #> print(measure)
+  
   ## If the gene is an old module
+  #>    then we add its affect to neighboring (d<r) nodes
   if(g_old_class == "M"){
     ## Traverse other genes in the surrounding radius
     ## and update their cumulative_decay_score
@@ -564,7 +641,9 @@ for(i in seq(1,nrow(gs_results_all))){
       }
     }
   }
-  ## Not old module - check if new, if yes put 1 in the vector
+  ## If not old module:
+  #>    check if it is a new module,
+  #>        if yes put 1 in the vector
   else{
     if (g_new_class == "M"){
       new_module[i] = 1
@@ -573,30 +652,34 @@ for(i in seq(1,nrow(gs_results_all))){
 }
 
 ## We have 69 new modules - validate this
-# Ghadi: 72 with k = 2, 69 with k = 3
+## Ghadi: 72 with k = 2, 69 with k = 3
 sum(new_module==1)
-## How many modules are in new but are not in old in old but they are in new
+## How many modules are in new but are not in old
 sum(class_res_old$gene_class[,2]=="M")
 sum(class_res_new$gene_class[,2]=="M")
 
-## Get md genes in new
+## Get Module Genes in our method: GS + mND
 new_mdg = rownames(class_res_new$gene_class)[class_res_new$gene_class[,2] == "M"]
+## Get Module Genes in 1st method: Only mND
 old_mdg = rownames(class_res_old$gene_class)[class_res_old$gene_class[,2] == "M"]  
-sum(new_mdg %in% old_mdg)
-sum(!(old_mdg %in% new_mdg)) #32 (k=2) modules discarded by GS
-## True - we have 69 genes as new modules previously not as modules
-# Ghadi: 72 with k = 2, 69 k = 3
 
+#> Count Common Module Genes in our Method
+sum(new_mdg %in% old_mdg)
+
+#> Count Unique Module Genes in both Method
+## 32 (k=2) modules discarded by GS
+sum(!(old_mdg %in% new_mdg)) 
+## Ghadi: 72 with k = 2, 69 k = 3
 sum(!(new_mdg %in% old_mdg))
+
+## Get names of unique genes (distinct module genes: mdg)
 distinct_mdg = new_mdg[which(!(new_mdg %in% old_mdg))]
 discarded_mdg <- new_mdg[which(!(old_mdg %in% new_mdg))]
-## length(distinct_mdg)
-
-## Indices of distinct mdg
+## Get Indices of unique genes 
 dmdg_indices = which(rownames(X0_gs_adjusted)%in%distinct_mdg)
 discarded_mdg_indices <- which(rownames(X0_gs_adjusted)%in%discarded_mdg)
 
-## Mean Results
+## Mean Results of Decay Score in 1st method vs our method
 mean(results_c_decay_score[dmdg_indices])
 mean(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 
@@ -608,7 +691,7 @@ ggplot(as.data.frame(as.matrix(results_c_decay_score[dmdg_indices])), aes(V1)) +
 ggplot(as.data.frame(as.matrix(results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])), aes(V1)) + geom_density()
 
 ## Overlaying the Density Plots
-# Distinct
+#> Distinct
 a = data.frame(cumulative_decay_score = results_c_decay_score[dmdg_indices])
 b = data.frame(y = results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))])
 ggplot() + 
@@ -616,7 +699,7 @@ ggplot() +
                fill = "#DAF7A6", color = "black", alpha = 0.7) + 
   geom_density(data = b, aes(x = y),
                fill = "#C70039", color = "black", alpha = 0.7)
-#Discarded
+#> Discarded
 x = data.frame(cumulative_decay_score = results_c_decay_score[discarded_mdg_indices])
 y = data.frame(y = results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%discarded_mdg))])
 ggplot() + 
@@ -625,7 +708,7 @@ ggplot() +
   geom_density(data = y, aes(x = y),
                fill = "#C70039", color = "black", alpha = 0.7)
 
-## Next: 
+## Next: Frederick Abi Chahine
 ## Significance Test between two vectors which are (distinct):
 ## 1. results_c_decay_score[dmdg_indices]
 ## 2. results_c_decay_score[which(!(rownames(X0_gs_adjusted)%in%distinct_mdg))]
@@ -686,7 +769,7 @@ t.test(x = vector3, y = vector4, alternative = "two.sided", mu = 0, paired = FAL
 #the means of vector3 and vector4 are 180.41 and 126.44 respectively.
                            
 ## ----------------------------------------------------------------------------
-#Sanity check:
+## Sanity Re-check:
 sum(class_res_new$gene_class[,1] != class_res_old$gene_class[,1])
 
 shift_sm <- table(mND = class_res_old$gene_class[,1], GS_adjusted_mND = class_res_new$gene_class[,1])
@@ -717,17 +800,23 @@ results_ge_GS_adjusted
 # Percent over all genes
 (shift_ge/11796)*100
 
-## ================================
-# Analyzing coverage of Breast Cancer Related Genes
-## ================================
+## ============================================================================
+## Finally Analyzing coverage of Breast Cancer Related Genes - Ghadi
+## ============================================================================
 
-# Getting Disease-related genes with AutoSeed (includes eDGAR, DrugBank, and MalaCards)
+## Getting Disease-related genes with AutoSeed 
+## (includes eDGAR, DrugBank, and MalaCards)
+## install.packages("Autoseed")
 library(Autoseed)
 bc_genes_search <- AutoSeed("breast cancer")
 bc_genes_search2 <- AutoSeed("breast carcinoma")
-bc_genes <- Reduce(union, c(bc_genes_search$edgar,bc_genes_search$malacards, bc_genes_search$drugbank,
-                            bc_genes_search2$edgar,bc_genes_search2$malacards, bc_genes_search2$drugbank))
-bc_genes_clean <- unique(vapply(bc_genes, function(x){return(unlist(strsplit(x, split='::', fixed=TRUE))[1])}, c("x")))
+bc_genes <- Reduce(union, c(bc_genes_search$edgar,bc_genes_search$malacards,
+                            bc_genes_search$drugbank,
+                            bc_genes_search2$edgar,bc_genes_search2$malacards,
+                            bc_genes_search2$drugbank))
+bc_genes_clean <- unique(vapply(bc_genes, function(x){
+                      return(unlist(strsplit(x, split='::', fixed=TRUE))[1])},
+                      c("x")))
 bc_genes_clean <- bc_genes_clean[bc_genes_clean%in%rownames(X0)]
 # Matched distinct genes
 sum(distinct_mdg %in% bc_genes_clean)
@@ -748,10 +837,15 @@ sum(genes_selected_new %in% bc_genes_clean)/length(bc_genes_clean)*100
 
 # Analyzing coverage by mNDp cutoffs
 cutoffs <- seq(0.0001, 0.06, 0.0001)
-genes_selected_cutoffs <- data.frame(mNDp_cutoffs = 1:length(cutoffs), old = 1:length(cutoffs), new = 1:length(cutoffs), new_k2 = 1:length(cutoffs))
+genes_selected_cutoffs <- data.frame(mNDp_cutoffs = 1:length(cutoffs),
+                                     old = 1:length(cutoffs),
+                                     new = 1:length(cutoffs),
+                                     new_k2 = 1:length(cutoffs))
 for(i in 1:length(cutoffs)){
-  genes_cutoff_old <- rownames(mND_score$mND %>% filter(mNDp <= cutoffs[i]))# %>% filter(L2 != "NS"))
-  genes_cutoff_new <- rownames(mND_score_new$mND %>% filter(mNDp <= cutoffs[i]))# %>% filter(L2 != "NS"))
+  # %>% filter(L2 != "NS"))
+  genes_cutoff_old <- rownames(mND_score$mND %>% filter(mNDp <= cutoffs[i]))
+  # %>% filter(L2 != "NS"))
+  genes_cutoff_new <- rownames(mND_score_new$mND %>% filter(mNDp <= cutoffs[i]))
   genes_cutoff_new_k2 <- rownames(mND_score_new_k2$mND %>% filter(mNDp <= cutoffs[i]))
   print(paste("Cutoff:", i))
   # Matched selected by mNDp cutoff old
@@ -781,12 +875,12 @@ ggplot() +
   ggtitle("Cumulative Coverage of disease-related genes by mNDp cutoffs", 
           subtitle = "mND (k = 3) in black, GS-adjusted mND (k = 2) in blue, GS-adjusted mND (k = 3) in red")
 
-## ================================
-# Enrichment Analysis
-## ================================
+## ===========================================================================
+## Enrichment Analysis - Ghadi
+## ===========================================================================
 
-require(KEGGREST)
-
+#BiocManager::install("KEGGREST")
+library(KEGGREST)
 pathways.list <- keggList("pathway", "hsa") #Needs Internet connection
 pathway.codes <- sub("path:", "", names(pathways.list)) 
 genes.by.pathway <- sapply(pathway.codes,
@@ -832,10 +926,12 @@ enrich <- function(mND_score, pathways.list, pathway.codes, genes.by.pathway)
 
 enrichment_old <- enrich(mND_score, pathways.list, pathway.codes, genes.by.pathway)
 enrichment_new <- enrich(mND_score_new, pathways.list, pathway.codes, genes.by.pathway)
+
+# Write and Load Codes
 #write.csv(enrichment_old, "Results/Enrichment/enrichment_old.csv")
-#enrichment_old <- read.csv("Results/Enrichment/enrichment_old.csv")
+enrichment_old <- read.csv("Results/Enrichment/enrichment_old.csv")
 #write.csv(enrichment_new, "Results/Enrichment/enrichment_new.csv")
-#enrichment_new <- read.csv("Results/Enrichment/enrichment_new.csv")
+enrichment_new <- read.csv("Results/Enrichment/enrichment_new.csv")
 
 comparative_enrich <- function(X0, mND_scores = list(), pathways.list, pathway.codes, genes.by.pathway){
   result <- list()
@@ -864,7 +960,10 @@ comparative_enrich <- function(X0, mND_scores = list(), pathways.list, pathway.c
   return(result)
 }
 
-comparative_enrichment <- comparative_enrich(X0, list(mND_old_k3 = mND_score, mND_new_k3 = mND_score_new, mND_new_k2 = mND_score_new_k2), pathways.list, pathway.codes, genes.by.pathway)
+comparative_enrichment <- comparative_enrich(X0, list(mND_old_k3 = mND_score,
+                                                      mND_new_k3 = mND_score_new,
+                                                      mND_new_k2 = mND_score_new_k2),
+                                             pathways.list, pathway.codes, genes.by.pathway)
 
 bc_pathways <- c("Breast cancer - Homo sapiens (human)", 
                  "Epstein-Barr virus infection - Homo sapiens (human)", 
@@ -893,13 +992,14 @@ for(pathway in append(bc_pathways, other_pathways)){
             ylab("Cumulative Coverage (%)") +
             xlab("Cutoff of sorted gene list") +
             ggtitle(pathway) 
-              #subtitle = "Black: mND (k = 3), Blue: GS-adjusted mND (k = 2), Red: GS-adjusted mND (k = 3), Magenta: original DE scores")
+              #subtitle = "Black: mND (k = 3), Blue: GS-adjusted mND (k = 2),
+              #Red: GS-adjusted mND (k = 3), Magenta: original DE scores")
   print(plot)
 }
 
-## ================================
-# Assessing Connectivity of High Scoring Genes
-## ================================
+## =============================================================================
+## Assessing Connectivity of High Scoring Genes
+## =============================================================================
 
 assess_connectivity <- function(A, mND_score, n){
   
@@ -953,29 +1053,29 @@ ordered_scores_old <- (mND_score$mND %>% arrange(desc(mND)))[1:1000,]
 sub_A_old <- A[rownames(A) %in% rownames(ordered_scores_old), colnames(A) %in% rownames(ordered_scores_old)]
 
 connectivity_old <- assess_connectivity(sub_A_old, ordered_scores_old, 300)
-#write.csv(connectivity_old, "Results/Connectivity/connectivity_old.csv")1
-#conenctivity_old <- read.csv("Results/Connectivity/connectivity_old.csv")
+#write.csv(connectivity_old, "Results/Connectivity/connectivity_old.csv")
+connectivity_old <- read.csv("Results/Connectivity/connectivity_old.csv")
 
 ordered_scores_new <- (mND_score_new$mND %>% arrange(desc(mND)))[1:1000,]
 sub_A_new <- A[rownames(A) %in% rownames(ordered_scores_new), colnames(A) %in% rownames(ordered_scores_new)]
 
 connectivity_new <- assess_connectivity(sub_A_new, ordered_scores_new, 300)
 #write.csv(connectivity_new, "Results/Connectivity/connectivity_new.csv")
-#conenctivity_new <- read.csv("Results/Connectivity/connectivity_new.csv")
+connectivity_new <- read.csv("Results/Connectivity/connectivity_new.csv")
 
 ordered_scores_new_k2 <- (mND_score_new_k2$mND %>% arrange(desc(mND)))[1:1000,]
 sub_A_new_k2 <- A[rownames(A) %in% rownames(ordered_scores_new_k2), colnames(A) %in% rownames(ordered_scores_new_k2)]
 
 connectivity_new_k2 <- assess_connectivity(sub_A_new_k2, ordered_scores_new_k2, 300)
 #write.csv(connectivity_new_k2, "Results/Connectivity/connectivity_new_k2.csv")
-#conenctivity_new_k2 <- read.csv("Results/Connectivity/connectivity_new_k2.csv")
+connectivity_new_k2 <- read.csv("Results/Connectivity/connectivity_new_k2.csv")
 
 ordered_scores_control <- (as.data.frame(X0) %>% mutate(mND = L2) %>% arrange(desc(mND)))[1:1000,]
 sub_A_control <- A[rownames(A) %in% rownames(ordered_scores_control), colnames(A) %in% rownames(ordered_scores_control)]
 
 connectivity_control <- assess_connectivity(sub_A_control, ordered_scores_control, 300)
 #write.csv(connectivity_control, "Results/Connectivity/connectivity_control.csv")
-#conenctivity_control <- read.csv("Results/Connectivity/connectivity_control.csv")
+connectivity_control <- read.csv("Results/Connectivity/connectivity_control.csv")
 
 ggplot() + 
   geom_line(data = connectivity_old[1:150,], aes(cutoff, p_omega), color = "black") +
@@ -1014,9 +1114,9 @@ ggplot() +
   ggtitle("Distribution of scores", 
           subtitle = "Black: mND (k=3), Blue,Red: GS-adjusted mND (k=2,3), Magenta: original DE")
 
-## ================================
-# Visualization of M & L (Looks like neighbors are not included in class M)
-## ================================
+## =========================================================================
+## Visualization of M & L (Looks like neighbors are not included in class M)
+## =========================================================================
 
 ## mND Graph
 library(visNetwork)
@@ -1042,82 +1142,4 @@ visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
   visIgraphLayout(layout = "layout_nicely") %>%
   visOptions(nodesIdSelection = TRUE, selectedBy = "class")
 
-## ================================
-## ================================
-######### NOTES ##########
-# unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
-# Check GeneSurrounder.R line 325
-# Error thrown: Error in cor.fk(abs(ge[igenes.names]), igenes.distances) : 
-#                       x and y must have same length.
-#### UPDATE 1
-# GS only runs on 1 gene at a time, only outputs p.Sphere and p.Decay not p.Fisher
-# Created for loop to run gs on each gene, calculate p.Fisher, and keep results for min(p.Fisher) only
-# -2(ln(p.Sphere) + ln(p.Decay)) does not give a p-value. It gives X2 distribution with 4 degrees of freedom
-# How to convert to p-value?
-#### UPDATE 2
-# Converted to p-value with pchisq in GeneSurrounder.R
-# geneNIDG() now outputs p.Fisher
-# GeneSurrounder requires scores per sample, modified it to calculate p.Decay only with L2 values
-# Still time intensive, couldn't run genesurrounder on all genes to have -log10(p.Decay) as input to mND. The code is written in any case
-# Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
-# Currently running
-#### UPDATE 3
-# Sample output was generated (gs_result_NDp_filter.csv with genes filtered based on mND scores)
-# Fixed so that genes can be filtered based on ND p-values (using calc_p() from calc_p.R taken from mND package)
-# Sample output for genes filtered by GE >= 10 are in gs_result_GE_filter.csv (done without parallelization)
-# Added parallelization to run_genesurrounder() to run on all genes (last chunk)
-# Couldn't execute because system storage got full
-#### UPDATE 4
-# run_genesurrounder() fixed to output df
-# Function was moved to genesurrounder/run_geneSurrounder.R, in case you are using Windows set cores = 1
-# currently running it on 1000 genes at a time to get complete output
-# Saved ge_resampled.csv so that we use same resampled data for all genes
-# Couldn't push to repo due to size > 100 mb, tell me if you need it and I'll send or set.seed(123)
-# Seeds on R were problematic before, but output of ge_resampled seems consitent here
-# gs_results_first_3000.csv saved (6397 genes remaining at a rate of 16.25 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
-# --> a bit less than 29 hours of runtime remaining
-#### UPDATE 5
-# gs_results_first_4000.csv saved (5397 genes remaining at an updated rate of 16.4 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
-# --> a bit more than 24 hours 30 minutes of runtime remaining
-#### UPDATE 6
-# gs_results_first_5000.csv saved (4397 genes remaining at an updated rate of 16.65 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
-# --> a bit more than 20 hours 20 minutes of runtime remaining
-#### UPDATE 7
-# gs_results_first_6000.csv saved (3397 genes remaining at an updated rate of 16.62 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
-# --> a bit more than 15 hours 30 minutes of runtime remaining
-#### UPDATE 8
-# gs_results_first_7000.csv saved (2397 genes remaining at an updated rate of 16.54 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
-# --> a bit more than 11 hours 00 minutes of runtime remaining
-#### UPDATE 9
-# gs_results_first_8000.csv saved (1397 genes remaining at an updated rate of 16.47 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
-# --> a bit more than 6 hours 36 minutes of runtime remaining
-#### UPDATE 10
-# gs_results_all.csv saved --> rate: 16.39 secs/gene using 2 cores
-## Countdown: 9397/9397
-# Ran mND with initial and gs adjusted scores (saved as mND_scores.rds and mND_gs_adjusted_scores.rds in Data folder)
-# We have to see how to validate now: visualizations, metrics, maybe checking if genes that were enhanced by gs were new modules in mND
-#### UPDATE 11 
-# Added results for mND alone (k = 3) and GS adjusted mND (k = 2, k = 3) as indicated by k optimization
-# created .rds objects or .csv files for needed info to be loaded to run results, saved plots as well
-#### UPDATE 12
-# Added shift from class to class percentages
-# Added network visualization for selected genes
-
-#### next ####
-# Evaluation
-# Comparison with mND alone
-# 1. We could probably check % transition from class to another (Isolated, Linker, Module, NotSignificant)
-# 2. Dr. Hanna, Frederick, and Ghadi discussed quantifying correlation between mND score of genes not selected 
-#    before GS (but selected after; lets say decayed genes) and connection of a gene to nodes labeled as M by mND alone (w/out GS)
-#    We discussed doing this at many distance thresholds to see if the correlation drops when M genes are further
-#    We would do mND score / distance to normalize (or maybe -log10(mNDp)/distance) and add up for all M genes that
-#    contain the gene of interest in their radius and are at a distance == threshold to gene of interest
-#    This score is calculated for decayed genes and we check correlation to mND adjusted (or -log10(mNDp adjusted))
-#    --> From here we can either take cut-off for this score (mND score / distance) to consider a gene decayed
-#        maybe trying many distance thresholds where genes selected are distance =< threshold and we check 
-#        where correlation stabilizes?? we need to try it and see the trend
-#       OR
-#        We could just leave the score as is (mND score / distance) to describe that the gene is 
-#        influenced by decay this much
-# 3. We could visualize the 1200 genes for mND alone and GS-adjusted mND colored but I, L, M (3 colors)
-#    We could check for connectivity and overall topology
+## =========================================================================

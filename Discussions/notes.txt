@@ -1,0 +1,79 @@
+## ================================
+## ================================
+######### NOTES ##########
+# unique(idx) takes so much time i couldn't wait for it. How to subset the matrix by conditions to give a smaller matrix (not a list!)
+# Check GeneSurrounder.R line 325
+# Error thrown: Error in cor.fk(abs(ge[igenes.names]), igenes.distances) : 
+#                       x and y must have same length.
+#### UPDATE 1
+# GS only runs on 1 gene at a time, only outputs p.Sphere and p.Decay not p.Fisher
+# Created for loop to run gs on each gene, calculate p.Fisher, and keep results for min(p.Fisher) only
+# -2(ln(p.Sphere) + ln(p.Decay)) does not give a p-value. It gives X2 distribution with 4 degrees of freedom
+# How to convert to p-value?
+#### UPDATE 2
+# Converted to p-value with pchisq in GeneSurrounder.R
+# geneNIDG() now outputs p.Fisher
+# GeneSurrounder requires scores per sample, modified it to calculate p.Decay only with L2 values
+# Still time intensive, couldn't run genesurrounder on all genes to have -log10(p.Decay) as input to mND. The code is written in any case
+# Tried filtering genes by mNDp <= 0.05 to shortlist genesurrounder input. Also filter for gene expression > 0 --> 3753 genes estimated to take 5.2 hours
+# Currently running
+#### UPDATE 3
+# Sample output was generated (gs_result_NDp_filter.csv with genes filtered based on mND scores)
+# Fixed so that genes can be filtered based on ND p-values (using calc_p() from calc_p.R taken from mND package)
+# Sample output for genes filtered by GE >= 10 are in gs_result_GE_filter.csv (done without parallelization)
+# Added parallelization to run_genesurrounder() to run on all genes (last chunk)
+# Couldn't execute because system storage got full
+#### UPDATE 4
+# run_genesurrounder() fixed to output df
+# Function was moved to genesurrounder/run_geneSurrounder.R, in case you are using Windows set cores = 1
+# currently running it on 1000 genes at a time to get complete output
+# Saved ge_resampled.csv so that we use same resampled data for all genes
+# Couldn't push to repo due to size > 100 mb, tell me if you need it and I'll send or set.seed(123)
+# Seeds on R were problematic before, but output of ge_resampled seems consitent here
+# gs_results_first_3000.csv saved (6397 genes remaining at a rate of 16.25 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit less than 29 hours of runtime remaining
+#### UPDATE 5
+# gs_results_first_4000.csv saved (5397 genes remaining at an updated rate of 16.4 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit more than 24 hours 30 minutes of runtime remaining
+#### UPDATE 6
+# gs_results_first_5000.csv saved (4397 genes remaining at an updated rate of 16.65 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 20 hours 20 minutes of runtime remaining
+#### UPDATE 7
+# gs_results_first_6000.csv saved (3397 genes remaining at an updated rate of 16.62 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 15 hours 30 minutes of runtime remaining
+#### UPDATE 8
+# gs_results_first_7000.csv saved (2397 genes remaining at an updated rate of 16.54 sec/gene on average --> estimated 4hrs 36mins/1000 genes using 2 cores)
+# --> a bit more than 11 hours 00 minutes of runtime remaining
+#### UPDATE 9
+# gs_results_first_8000.csv saved (1397 genes remaining at an updated rate of 16.47 sec/gene on average --> estimated 4hrs 30mins/1000 genes using 2 cores)
+# --> a bit more than 6 hours 36 minutes of runtime remaining
+#### UPDATE 10
+# gs_results_all.csv saved --> rate: 16.39 secs/gene using 2 cores
+## Countdown: 9397/9397
+# Ran mND with initial and gs adjusted scores (saved as mND_scores.rds and mND_gs_adjusted_scores.rds in Data folder)
+# We have to see how to validate now: visualizations, metrics, maybe checking if genes that were enhanced by gs were new modules in mND
+#### UPDATE 11 
+# Added results for mND alone (k = 3) and GS adjusted mND (k = 2, k = 3) as indicated by k optimization
+# created .rds objects or .csv files for needed info to be loaded to run results, saved plots as well
+#### UPDATE 12
+# Added shift from class to class percentages
+# Added network visualization for selected genes
+
+#### next ####
+# Evaluation
+# Comparison with mND alone
+# 1. We could probably check % transition from class to another (Isolated, Linker, Module, NotSignificant)
+# 2. Dr. Hanna, Frederick, and Ghadi discussed quantifying correlation between mND score of genes not selected 
+#    before GS (but selected after; lets say decayed genes) and connection of a gene to nodes labeled as M by mND alone (w/out GS)
+#    We discussed doing this at many distance thresholds to see if the correlation drops when M genes are further
+#    We would do mND score / distance to normalize (or maybe -log10(mNDp)/distance) and add up for all M genes that
+#    contain the gene of interest in their radius and are at a distance == threshold to gene of interest
+#    This score is calculated for decayed genes and we check correlation to mND adjusted (or -log10(mNDp adjusted))
+#    --> From here we can either take cut-off for this score (mND score / distance) to consider a gene decayed
+#        maybe trying many distance thresholds where genes selected are distance =< threshold and we check 
+#        where correlation stabilizes?? we need to try it and see the trend
+#       OR
+#        We could just leave the score as is (mND score / distance) to describe that the gene is 
+#        influenced by decay this much
+# 3. We could visualize the 1200 genes for mND alone and GS-adjusted mND colored but I, L, M (3 colors)
+#    We could check for connectivity and overall topology
