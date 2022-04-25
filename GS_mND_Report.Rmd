@@ -90,7 +90,7 @@ library(lubridate)
 
 ---
 
-## [3] ~ Protcol mND Only {.tabset .tabset-fade .tabset-pills}
+## [3] ~ Protocol mND Only {.tabset .tabset-fade .tabset-pills}
 
 ```{r, eval = FALSE}
 ## ==========================================================================
@@ -458,7 +458,7 @@ visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
 
 ```{r}
 ## ==========================================================================
-## Analysis of Results - Bilal
+## Analysis of Results
 ## A. Checking Old vs New Genes Count
 ## B. Introducing Cumulative Decay Score
 ## ==========================================================================
@@ -492,7 +492,7 @@ length(new_genes)
 old_genes = rownames(mND_score$mND)[which(mND_score$mND$mNDp < 0.05)]
 length(old_genes)
 ## Ratio - we have a 7% change in the genes 
-## Ghadi: " 7.7% of the total genes were additionally
+## " 7.7% of the total genes were additionally
 ##          significant with a 0.05 mNDp threshold "
 sum(!(new_genes %in% old_genes))/nrow(mND_score$mND)
 
@@ -615,7 +615,7 @@ for(i in seq(1,nrow(gs_results_all))){
 }
 
 ## We have 69 new modules - validate this
-## Ghadi: 72 with k = 2, 69 with k = 3
+## 72 with k = 2, 69 with k = 3
 sum(new_module==1)
 ## How many modules are in new but are not in old
 sum(class_res_old$gene_class[,2]=="M")
@@ -632,7 +632,7 @@ sum(new_mdg %in% old_mdg)
 #> Count Unique Module Genes in both Method
 ## 32 (k=2) modules discarded by GS
 sum(!(old_mdg %in% new_mdg)) 
-## Ghadi: 72 with k = 2, 69 k = 3
+## 72 with k = 2, 69 k = 3
 sum(!(new_mdg %in% old_mdg))
 
 ## Get names of unique genes (distinct module genes: mdg)
@@ -673,7 +673,7 @@ ggplot() +
 ```
 
 
-### [5.e] Significance Test (T-test)
+### [5.e] Significance Test
 
 ```{r}
 ## Significance Test between two vectors which are (distinct):
@@ -834,7 +834,7 @@ for(i in seq(1,nrow(gs_results_all))){
 }
 
 ## We have 69 new modules - validate this
-## Ghadi: 72 with k = 2, 69 with k = 3
+## 72 with k = 2, 69 with k = 3
 sum(new_module==1)
 ## How many modules are in new but are not in old
 sum(class_res_old$gene_class[,2]=="I") + sum(class_res_old$gene_class[,2]=="L")
@@ -851,7 +851,7 @@ sum(new_mdg %in% old_mdg)
 #> Count Unique Module Genes in both Method
 ## 32 (k=2) modules discarded by GS
 sum(!(old_mdg %in% new_mdg)) 
-## Ghadi: 72 with k = 2, 69 k = 3
+## 72 with k = 2, 69 k = 3
 sum(!(new_mdg %in% old_mdg))
 
 ## Get names of unique genes (distinct module genes: mdg)
@@ -896,7 +896,7 @@ ggplot() +
 ### [6.a] Coverage
 ```{r}
 ## ============================================================================
-## Analyzing coverage of Breast Cancer Related Genes - Ghadi
+## Analyzing coverage of Breast Cancer Related Genes
 ## ============================================================================
 ## Getting Disease-related genes with AutoSeed 
 ## (includes eDGAR, DrugBank, and MalaCards)
@@ -973,7 +973,7 @@ ggplot() +
 ### [6.b] Encrichment
 ```{r}
 ## ===========================================================================
-## Enrichment Analysis - Ghadi
+## Enrichment Analysis
 ## ===========================================================================
 
 #BiocManager::install("KEGGREST")
@@ -1134,7 +1134,7 @@ visNetwork(nodes = vis_adjusted_mND$nodes, edges = vis_adjusted_mND$edges) %>%
 ## =========================================================================
 ```
 
-## [8] ~ Conncetivity
+## [8] ~ Connectivity
 ```{r, eval = FALSE}
 assess_connectivity <- function(A, mND_score, n){
   
