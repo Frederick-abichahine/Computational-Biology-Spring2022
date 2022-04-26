@@ -581,7 +581,7 @@ head(class_res_new$gene_class)
 ## After obtaining the classification of each gene
 ## we wish to check the cumulative_decay_score on target genes
 ## Target Genes are new genes that are obtained
-## Cumulative Decay Score = GE_neighbor/d_neighbor_target
+  ## Cumulative Decay Score = GE_neighbor/d_neighbor_target
 ## Stategy:
 ## For ever node in the graph:
 ##  for all modules in the list of old modules:
