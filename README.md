@@ -81,7 +81,7 @@ b. <Future improvements?>
 a. Run GS & obtain p-decay (ideally, we wish to obtain p-fisher).   
 b. Run mND on data with adjusted scores by p-decay   
 
-#### Detailed PROTOCOL GS & mND
+#### Detailed Protocol GS & mND
 ##### Data Collection
 The data used was extracted from the pipeline of mND which was originally sourced from TCGA [15] using R package TCGAbiolinks [16]. It consists of two layers: somatic mutations frequency and differential expression scores from 11,796 genes expression data from matched tumor-normal samples (blood samples for SM and solid tissue samples for GE) for breast cancer patients and considering the human genome version 38 (hg38). The same adjacency network was also used from mND, which was originally obtained from STRING [17], to maintain comparable gene-gene interactions. 
 The reasoning behind choosing the same datasets used by mND is to allow us to assess and compare the results obtained with previous methods to validate any changes. This ensures the protocol for preprocessing, DE score calculation, and postprocessing is constant.
